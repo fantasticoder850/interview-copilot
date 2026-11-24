@@ -1,104 +1,45 @@
-import { useEffect, useState } from "react";
-import { api } from "./api";
-import { ChatPane } from "./components/ChatPane";
-import { Sidebar } from "./components/Sidebar";
-import type { Model, SessionDetail, SessionSummary } from "./types";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { useAuth } from "./auth/AuthContext";
+import { AppShell } from "./layout/AppShell";
+import type { Role } from "./types";
+import { Login } from "./pages/Login";
+import { Register } from "./pages/Register";
+import { Users } from "./pages/admin/Users";
+import { Resumes } from "./pages/Resumes";
+import { ResumeForm } from "./pages/ResumeForm";
+import { Interviews } from "./pages/Interviews";
+import { InterviewForm } from "./pages/InterviewForm";
+import { InterviewRoom } from "./pages/InterviewRoom";
+
+function Guard({ roles, children }: { roles?: Role[]; children: JSX.Element }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="page">Loading…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to="/interviews" replace />;
+  return children;
+}
 
 export function App() {
-  const [models, setModels] = useState<Model[]>([]);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [active, setActive] = useState<SessionDetail | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Initial load: models + session list.
-  useEffect(() => {
-    api.getModels().then(setModels).catch(console.error);
-    refreshSessions();
-  }, []);
-
-  // Load the active session's detail whenever the selection changes.
-  useEffect(() => {
-    if (!activeId) {
-      setActive(null);
-      return;
-    }
-    api.getSession(activeId).then(setActive).catch(console.error);
-  }, [activeId]);
-
-  async function refreshSessions(): Promise<SessionSummary[]> {
-    const list = await api.listSessions();
-    setSessions(list);
-    return list;
-  }
-
-  function handleSelect(id: string) {
-    setActiveId(id);
-    setSidebarOpen(false); // close the drawer on mobile after picking
-  }
-
-  async function handleNew() {
-    const session = await api.createSession();
-    await refreshSessions();
-    setActiveId(session.id);
-    setSidebarOpen(false);
-  }
-
-  async function handleDelete(id: string) {
-    await api.deleteSession(id);
-    const list = await refreshSessions();
-    if (activeId === id) {
-      setActiveId(list[0]?.id ?? null);
-    }
-  }
-
-  async function handleModelChange(modelId: string) {
-    if (!active) return;
-    const updated = await api.updateSession(active.id, { model: modelId });
-    setActive({ ...active, model: updated.model });
-    refreshSessions();
-  }
-
+  const { user, loading } = useAuth();
   return (
-    <div className="layout">
-      <Sidebar
-        sessions={sessions}
-        activeId={activeId}
-        open={sidebarOpen}
-        onSelect={handleSelect}
-        onNew={handleNew}
-        onDelete={handleDelete}
-        onClose={() => setSidebarOpen(false)}
-      />
-      {/* Backdrop behind the drawer on mobile */}
-      <div
-        className={`backdrop ${sidebarOpen ? "visible" : ""}`}
-        onClick={() => setSidebarOpen(false)}
-      />
-      {active ? (
-        <ChatPane
-          key={active.id}
-          session={active}
-          models={models}
-          onModelChange={handleModelChange}
-          onActivity={refreshSessions}
-          onMenu={() => setSidebarOpen(true)}
-        />
-      ) : (
-        <main className="welcome">
-          <button
-            className="menu-btn welcome-menu"
-            aria-label="Open sessions"
-            onClick={() => setSidebarOpen(true)}
-          >
-            ☰
-          </button>
-          <div>
-            <h1>Interview Assistant</h1>
-            <p>Open the menu to create a new chat.</p>
-          </div>
-        </main>
-      )}
-    </div>
+    <AppShell>
+      <Routes>
+        <Route path="/login" element={user ? <Navigate to="/interviews" replace /> : <Login />} />
+        <Route path="/register" element={user ? <Navigate to="/interviews" replace /> : <Register />} />
+
+        <Route path="/admin/users" element={<Guard roles={["admin"]}><Users /></Guard>} />
+
+        <Route path="/resumes" element={<Guard roles={["admin", "manager"]}><Resumes /></Guard>} />
+        <Route path="/resumes/new" element={<Guard roles={["admin", "manager"]}><ResumeForm /></Guard>} />
+        <Route path="/resumes/:id" element={<Guard roles={["admin", "manager"]}><ResumeForm /></Guard>} />
+
+        <Route path="/interviews" element={<Guard><Interviews /></Guard>} />
+        <Route path="/interviews/new" element={<Guard roles={["admin", "manager"]}><InterviewForm /></Guard>} />
+        <Route path="/interviews/:id/edit" element={<Guard roles={["admin", "manager"]}><InterviewForm /></Guard>} />
+        <Route path="/interviews/:id/room" element={<Guard><InterviewRoom /></Guard>} />
+
+        <Route path="*" element={loading ? <div className="page">Loading…</div> : <Navigate to={user ? "/interviews" : "/login"} replace />} />
+      </Routes>
+    </AppShell>
   );
 }

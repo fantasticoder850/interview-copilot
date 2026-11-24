@@ -1,113 +1,91 @@
-import type { Model, SessionDetail, SessionSummary } from "./types";
+import type {
+  AdminUser,
+  CurrentUser,
+  Interview,
+  InterviewSummary,
+  Message,
+  Model,
+  Person,
+  Resume,
+  ResumeSummary,
+} from "./types";
 
-async function json<T>(res: Response): Promise<T> {
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    headers: init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : undefined,
+    ...init,
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as any).error || `Request failed: ${res.status}`);
+    throw new Error((body as any).error || `Request failed (${res.status})`);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
+const body = (data: unknown) => JSON.stringify(data);
+
 export const api = {
-  getModels: () => fetch("/api/models").then(json<Model[]>),
+  // auth
+  me: () => req<{ user: CurrentUser }>("/auth/me").then((r) => r.user),
+  login: (email: string, password: string) =>
+    req<{ user: CurrentUser }>("/auth/login", { method: "POST", body: body({ email, password }) }).then((r) => r.user),
+  register: (data: { name: string; email: string; password: string; requestedRole: string }) =>
+    req<{ ok: boolean; message: string }>("/auth/register", { method: "POST", body: body(data) }),
+  logout: () => req("/auth/logout", { method: "POST" }),
 
-  listSessions: () => fetch("/api/sessions").then(json<SessionSummary[]>),
+  // admin
+  adminUsers: () => req<AdminUser[]>("/admin/users"),
+  patchUser: (id: string, patch: { status?: string; role?: string; password?: string }) =>
+    req<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body: body(patch) }),
+  setViewerManagers: (viewerId: string, managerIds: string[]) =>
+    req(`/admin/viewers/${viewerId}/managers`, { method: "PUT", body: body({ managerIds }) }),
 
-  createSession: (model?: string) =>
-    fetch("/api/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model }),
-    }).then(json<SessionSummary>),
+  // people
+  viewers: () => req<Person[]>("/viewers"),
+  models: () => req<Model[]>("/models"),
 
-  getSession: (id: string) =>
-    fetch(`/api/sessions/${id}`).then(json<SessionDetail>),
+  // resumes
+  resumes: () => req<ResumeSummary[]>("/resumes"),
+  resumeTemplate: () => req<{ template: string; starterQuestions: string[] }>("/resumes/template"),
+  resume: (id: string) => req<Resume>(`/resumes/${id}`),
+  createResume: (data: { name: string; role: string; content: string }) =>
+    req<Resume>("/resumes", { method: "POST", body: body(data) }),
+  updateResume: (id: string, data: Partial<{ name: string; role: string; content: string }>) =>
+    req<Resume>(`/resumes/${id}`, { method: "PATCH", body: body(data) }),
+  deleteResume: (id: string) => req(`/resumes/${id}`, { method: "DELETE" }),
+  parseResume: (form: FormData) => req<{ content: string }>("/resumes/parse", { method: "POST", body: form }),
 
-  updateSession: (id: string, patch: { title?: string; model?: string }) =>
-    fetch(`/api/sessions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    }).then(json<SessionSummary>),
+  // qa
+  addQA: (resumeId: string, q: { question: string; answer: string }) =>
+    req(`/resumes/${resumeId}/qa`, { method: "POST", body: body(q) }),
+  updateQA: (resumeId: string, qaId: string, q: Partial<{ question: string; answer: string; sortOrder: number }>) =>
+    req(`/resumes/${resumeId}/qa/${qaId}`, { method: "PATCH", body: body(q) }),
+  deleteQA: (resumeId: string, qaId: string) => req(`/resumes/${resumeId}/qa/${qaId}`, { method: "DELETE" }),
+  draftQA: (resumeId: string, question: string) =>
+    req<{ answer: string }>(`/resumes/${resumeId}/qa/draft`, { method: "POST", body: body({ question }) }),
 
-  deleteSession: (id: string) =>
-    fetch(`/api/sessions/${id}`, { method: "DELETE" }).then((res) => {
-      if (!res.ok && res.status !== 204) throw new Error("Delete failed");
-    }),
+  // interviews
+  interviews: () => req<InterviewSummary[]>("/interviews"),
+  interview: (id: string) => req<Interview>(`/interviews/${id}`),
+  createInterview: (data: Record<string, unknown>) => req<Interview>("/interviews", { method: "POST", body: body(data) }),
+  updateInterview: (id: string, data: Record<string, unknown>) =>
+    req<Interview>(`/interviews/${id}`, { method: "PATCH", body: body(data) }),
+  deleteInterview: (id: string) => req(`/interviews/${id}`, { method: "DELETE" }),
+  setStatus: (id: string, status: string) => req<Interview>(`/interviews/${id}/status`, { method: "POST", body: body({ status }) }),
+  newVersion: (id: string, carrySummary: boolean) =>
+    req<Interview>(`/interviews/${id}/new-version`, { method: "POST", body: body({ carrySummary }) }),
+  editInterviewResume: (id: string, text: string) => req(`/interviews/${id}/resume`, { method: "PUT", body: body({ text }) }),
+  recopyResume: (id: string) => req<{ content: string }>(`/interviews/${id}/resume/recopy`, { method: "POST" }),
+  saveBackResume: (id: string) => req(`/interviews/${id}/resume/save-back`, { method: "POST" }),
+  prepPack: (id: string) => req<{ prep_pack: string }>(`/interviews/${id}/prep-pack`, { method: "POST" }),
+  summary: (id: string) => req<{ summary: string }>(`/interviews/${id}/summary`, { method: "POST" }),
+
+  // room
+  messages: (id: string) => req<Message[]>(`/interviews/${id}/messages`),
+  ask: (id: string, form: FormData) => req<{ questionId: string }>(`/interviews/${id}/messages`, { method: "POST", body: form }),
+  note: (id: string, content: string) => req(`/interviews/${id}/notes`, { method: "POST", body: body({ content }) }),
+  stop: (id: string) => req(`/interviews/${id}/stop`, { method: "POST" }),
+  saveAnswerToQA: (id: string, msgId: string, question: string) =>
+    req(`/interviews/${id}/messages/${msgId}/save-qa`, { method: "POST", body: body({ question }) }),
 };
-
-export interface StreamHandlers {
-  onMeta?: (data: { model: string; title: string }) => void;
-  onDelta: (text: string) => void;
-  onDone: (data: { messageId: string; usage: unknown }) => void;
-  onError: (message: string) => void;
-}
-
-/**
- * Sends a message and consumes the SSE stream. Uses fetch + a streaming reader
- * because the request is a POST with a body (EventSource is GET-only).
- */
-export async function sendMessage(
-  sessionId: string,
-  content: string,
-  model: string,
-  handlers: StreamHandlers,
-  signal?: AbortSignal,
-): Promise<void> {
-  const res = await fetch(`/api/sessions/${sessionId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, model }),
-    signal,
-  });
-
-  if (!res.ok || !res.body) {
-    const body = await res.json().catch(() => ({}));
-    handlers.onError((body as any).error || `Request failed: ${res.status}`);
-    return;
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    // SSE frames are separated by a blank line.
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      dispatchFrame(frame, handlers);
-    }
-  }
-}
-
-function dispatchFrame(frame: string, handlers: StreamHandlers): void {
-  let event = "message";
-  let data = "";
-  for (const line of frame.split("\n")) {
-    if (line.startsWith("event:")) event = line.slice(6).trim();
-    else if (line.startsWith("data:")) data += line.slice(5).trim();
-  }
-  if (!data) return;
-
-  const parsed = JSON.parse(data);
-  switch (event) {
-    case "meta":
-      handlers.onMeta?.(parsed);
-      break;
-    case "delta":
-      handlers.onDelta(parsed.text);
-      break;
-    case "done":
-      handlers.onDone(parsed);
-      break;
-    case "error":
-      handlers.onError(parsed.message);
-      break;
-  }
-}
