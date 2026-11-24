@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <span className="spacer" />
-        <span className="who">{user.name} · {user.role}</span>
+        <Link to="/account" className="who">{user.name} · {user.role}</Link>
         <button className="link-btn" onClick={() => logout()}>Sign out</button>
       </header>
       <main className="content">{children}</main>

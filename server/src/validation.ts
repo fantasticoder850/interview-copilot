@@ -12,6 +12,17 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(200),
 });
 
+export const accountSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    email: z.string().trim().email().max(200).optional(),
+    password: z.string().min(8).max(200).optional(),
+    currentPassword: z.string().max(200).optional(),
+  })
+  .refine((d) => d.name !== undefined || d.email !== undefined || d.password !== undefined, {
+    message: "Nothing to update",
+  });
+
 export const resumeSchema = z.object({
   name: z.string().trim().min(1).max(200),
   role: z.string().trim().max(200).default(""),

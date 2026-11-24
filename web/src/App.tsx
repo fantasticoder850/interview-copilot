@@ -10,6 +10,7 @@ import { ResumeForm } from "./pages/ResumeForm";
 import { Interviews } from "./pages/Interviews";
 import { InterviewForm } from "./pages/InterviewForm";
 import { InterviewRoom } from "./pages/InterviewRoom";
+import { Account } from "./pages/Account";
 
 function Guard({ roles, children }: { roles?: Role[]; children: JSX.Element }) {
   const { user, loading } = useAuth();
@@ -37,6 +38,8 @@ export function App() {
         <Route path="/interviews/new" element={<Guard roles={["admin", "manager"]}><InterviewForm /></Guard>} />
         <Route path="/interviews/:id/edit" element={<Guard roles={["admin", "manager"]}><InterviewForm /></Guard>} />
         <Route path="/interviews/:id/room" element={<Guard><InterviewRoom /></Guard>} />
+
+        <Route path="/account" element={<Guard><Account /></Guard>} />
 
         <Route path="*" element={loading ? <div className="page">Loading…</div> : <Navigate to={user ? "/interviews" : "/login"} replace />} />
       </Routes>

@@ -4,7 +4,6 @@ import express from "express";
 import helmet from "helmet";
 import { env } from "./env.js";
 import { MODELS } from "./models.js";
-import { seedAdmin } from "./auth/seedAdmin.js";
 import { requireAuth } from "./auth/middleware.js";
 import { adminRouter } from "./routes/admin.js";
 import { authRouter } from "./routes/auth.js";
@@ -45,14 +44,6 @@ app.use(
   },
 );
 
-async function start() {
-  await seedAdmin();
-  app.listen(env.port, () => {
-    console.log(`Interview Assistant API listening on http://localhost:${env.port}`);
-  });
-}
-
-start().catch((err) => {
-  console.error("Failed to start:", err);
-  process.exit(1);
+app.listen(env.port, () => {
+  console.log(`Interview Assistant API listening on http://localhost:${env.port}`);
 });

@@ -5,7 +5,7 @@ import { publicUser, type User } from "../domain.js";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import { AUTH_COOKIE, cookieOptions, signToken } from "../auth/tokens.js";
 import { requireAuth } from "../auth/middleware.js";
-import { loginSchema, registerSchema, zodMessage } from "../validation.js";
+import { accountSchema, loginSchema, registerSchema, zodMessage } from "../validation.js";
 
 export const authRouter = Router();
 
@@ -75,4 +75,42 @@ authRouter.post("/logout", (_req, res) => {
 
 authRouter.get("/me", requireAuth, (req, res) => {
   res.json({ user: publicUser(req.user!) });
+});
+
+// Update own account: name, email, and/or password. Changing email or password
+// requires the current password.
+authRouter.patch("/me", requireAuth, async (req, res) => {
+  const parsed = accountSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: zodMessage(parsed.error) });
+  const { name, email, password, currentPassword } = parsed.data;
+  const me = req.user!;
+
+  const sensitive = email !== undefined || password !== undefined;
+  if (sensitive) {
+    const { rows } = await query<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = $1`,
+      [me.id],
+    );
+    const ok = currentPassword && (await verifyPassword(currentPassword, rows[0].password_hash));
+    if (!ok) return res.status(403).json({ error: "Current password is incorrect" });
+  }
+
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (name !== undefined) { sets.push(`name = $${sets.length + 1}`); vals.push(name); }
+  if (email !== undefined) {
+    const lower = email.toLowerCase();
+    const clash = await query(`SELECT 1 FROM users WHERE email = $1 AND id <> $2`, [lower, me.id]);
+    if (clash.rowCount! > 0) return res.status(409).json({ error: "That email is already in use" });
+    sets.push(`email = $${sets.length + 1}`); vals.push(lower);
+  }
+  if (password !== undefined) { sets.push(`password_hash = $${sets.length + 1}`); vals.push(await hashPassword(password)); }
+
+  vals.push(me.id);
+  const { rows } = await query<User>(
+    `UPDATE users SET ${sets.join(", ")} WHERE id = $${vals.length}
+     RETURNING id, email, name, role, requested_role, status, approved_by, approved_at, created_at`,
+    vals,
+  );
+  res.json({ user: publicUser(rows[0]) });
 });

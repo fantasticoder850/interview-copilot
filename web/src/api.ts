@@ -33,6 +33,8 @@ export const api = {
   register: (data: { name: string; email: string; password: string; requestedRole: string }) =>
     req<{ ok: boolean; message: string }>("/auth/register", { method: "POST", body: body(data) }),
   logout: () => req("/auth/logout", { method: "POST" }),
+  updateAccount: (data: { name?: string; email?: string; password?: string; currentPassword?: string }) =>
+    req<{ user: CurrentUser }>("/auth/me", { method: "PATCH", body: body(data) }).then((r) => r.user),
 
   // admin
   adminUsers: () => req<AdminUser[]>("/admin/users"),
