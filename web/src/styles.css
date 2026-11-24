@@ -171,3 +171,11 @@ label input, label select, label textarea { margin-top: 5px; color: var(--text);
   .quick-line { font-size: 17px; }
   .grid th:nth-child(2), .grid td:nth-child(2) { display: none; }
 }
+
+/* account */
+.section { border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 18px; max-width: 520px; }
+.section h2 { font-size: 15px; margin: 0 0 12px; }
+.account-form { }
+.keyrow { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.key-set { font-size: 13px; flex: 1; }
+.key-set code { background: var(--panel2); padding: 1px 6px; border-radius: 6px; }

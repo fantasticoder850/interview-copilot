@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type Anthropic from "@anthropic-ai/sdk";
 import multer from "multer";
-import { anthropic } from "../anthropic.js";
+import { clientForUser } from "../anthropic.js";
 import { pool, query } from "../db.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { canAccessResume } from "../auth/permissions.js";
@@ -59,7 +59,8 @@ resumesRouter.post("/parse", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Provide a PDF file or text" });
     }
 
-    const msg = await anthropic.messages.create({
+    const client = await clientForUser(req.user!.id);
+    const msg = await client.messages.create({
       model: "claude-sonnet-5-5",
       max_tokens: 4000,
       messages: [{ role: "user", content }],
@@ -209,7 +210,8 @@ resumesRouter.post("/:id/qa/draft", async (req, res) => {
   if (!question) return res.status(400).json({ error: "question is required" });
   const { rows } = await query<{ content: string }>(`SELECT content FROM resumes WHERE id = $1`, [req.params.id]);
   try {
-    const msg = await anthropic.messages.create({
+    const client = await clientForUser(req.user!.id);
+    const msg = await client.messages.create({
       model: "claude-sonnet-5-5",
       max_tokens: 1000,
       system:

@@ -1,5 +1,8 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { anthropicWithKey, getUserApiKey } from "../anthropic.js";
+import { encryptSecret } from "../crypto.js";
 import { query } from "../db.js";
 import { publicUser, type User } from "../domain.js";
 import { hashPassword, verifyPassword } from "../auth/password.js";
@@ -113,4 +116,35 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     vals,
   );
   res.json({ user: publicUser(rows[0]) });
+});
+
+// --- Per-user Anthropic API key --------------------------------------------
+
+// Whether the current user has a key set, and its last 4 chars.
+authRouter.get("/api-key", requireAuth, async (req, res) => {
+  const key = await getUserApiKey(req.user!.id);
+  res.json({ hasKey: !!key, last4: key ? key.slice(-4) : null });
+});
+
+// Set/replace the key. Validated against Anthropic before storing.
+authRouter.put("/api-key", requireAuth, async (req, res) => {
+  const key = String(req.body?.apiKey ?? "").trim();
+  if (!key.startsWith("sk-ant-")) {
+    return res.status(400).json({ error: "That doesn't look like an Anthropic API key (expected sk-ant-…)" });
+  }
+  try {
+    await anthropicWithKey(key).models.list();
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+      return res.status(400).json({ error: "Anthropic rejected this API key" });
+    }
+    // transient/non-auth errors: store anyway rather than block the user
+  }
+  await query(`UPDATE users SET anthropic_api_key_enc = $2 WHERE id = $1`, [req.user!.id, encryptSecret(key)]);
+  res.json({ hasKey: true, last4: key.slice(-4) });
+});
+
+authRouter.delete("/api-key", requireAuth, async (req, res) => {
+  await query(`UPDATE users SET anthropic_api_key_enc = NULL WHERE id = $1`, [req.user!.id]);
+  res.json({ hasKey: false, last4: null });
 });

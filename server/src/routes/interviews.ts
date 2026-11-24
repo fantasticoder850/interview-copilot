@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { anthropic } from "../anthropic.js";
+import { clientForUser } from "../anthropic.js";
 import { pool, query } from "../db.js";
 import type { InterviewRow } from "../domain.js";
 import { requireAuth } from "../auth/middleware.js";
@@ -292,7 +292,8 @@ interviewsRouter.post("/:id/prep-pack", loadForRead, requireManage, async (req, 
       interview: i, resumeText: await effectiveResumeText(i),
       qa: await effectiveQA(i), previousSummary: await previousSummary(i),
     });
-    const msg = await anthropic.messages.create({
+    const client = await clientForUser(i.owner_id);
+    const msg = await client.messages.create({
       model: i.model, max_tokens: 4000, system,
       messages: [{ role: "user", content:
         "Produce a preparation pack for this interview: list the 8-12 most likely questions, " +
@@ -329,8 +330,9 @@ async function warmCaches(interview: InterviewRow) {
     interview, resumeText: await effectiveResumeText(interview),
     qa: await effectiveQA(interview), previousSummary: await previousSummary(interview),
   });
+  const client = await clientForUser(interview.owner_id);
   const warm = (model: string) =>
-    anthropic.messages.create({ model, max_tokens: 1, system, messages: [{ role: "user", content: "ready?" }] });
+    client.messages.create({ model, max_tokens: 1, system, messages: [{ role: "user", content: "ready?" }] });
   await Promise.allSettled([warm(interview.model), warm("claude-haiku-5-5")]);
 }
 
@@ -343,7 +345,8 @@ async function generateSummary(interviewId: string) {
     interview, resumeText: await effectiveResumeText(interview),
     qa: await effectiveQA(interview), previousSummary: await previousSummary(interview),
   });
-  const msg = await anthropic.messages.create({
+  const client = await clientForUser(interview.owner_id);
+  const msg = await client.messages.create({
     model: interview.model, max_tokens: 2000, system,
     messages: [...history, { role: "user", content:
       "The interview is over. Summarise it: questions asked, how they were answered, weak spots, " +

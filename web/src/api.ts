@@ -35,6 +35,9 @@ export const api = {
   logout: () => req("/auth/logout", { method: "POST" }),
   updateAccount: (data: { name?: string; email?: string; password?: string; currentPassword?: string }) =>
     req<{ user: CurrentUser }>("/auth/me", { method: "PATCH", body: body(data) }).then((r) => r.user),
+  getApiKey: () => req<{ hasKey: boolean; last4: string | null }>("/auth/api-key"),
+  setApiKey: (apiKey: string) => req<{ hasKey: boolean; last4: string | null }>("/auth/api-key", { method: "PUT", body: body({ apiKey }) }),
+  clearApiKey: () => req<{ hasKey: boolean; last4: string | null }>("/auth/api-key", { method: "DELETE" }),
 
   // admin
   adminUsers: () => req<AdminUser[]>("/admin/users"),

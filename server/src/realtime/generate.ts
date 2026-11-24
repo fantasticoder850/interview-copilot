@@ -1,6 +1,7 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { anthropic } from "../anthropic.js";
+import type AnthropicSDK from "@anthropic-ai/sdk";
 import { QUICK_MODEL } from "../models.js";
+
+type Client = AnthropicSDK;
 
 export interface StageResult {
   text: string;
@@ -11,9 +12,10 @@ export interface StageResult {
 }
 
 interface StreamOpts {
+  client: Client;
   model: string;
-  system: Anthropic.MessageCreateParams["system"];
-  messages: Anthropic.MessageParam[];
+  system: AnthropicSDK.MessageCreateParams["system"];
+  messages: AnthropicSDK.MessageParam[];
   maxTokens: number;
   thinkingOff?: boolean;
   effort?: "low" | "medium" | "high";
@@ -40,7 +42,7 @@ export async function streamStage(opts: StreamOpts): Promise<StageResult> {
   if (opts.effort) params.output_config = { effort: opts.effort };
   if (opts.cacheHistory) params.cache_control = { type: "ephemeral" };
 
-  const stream = anthropic.messages.stream(params);
+  const stream = opts.client.messages.stream(params);
   if (opts.signal) {
     opts.signal.addEventListener("abort", () => stream.abort(), { once: true });
   }
@@ -69,13 +71,14 @@ export async function streamStage(opts: StreamOpts): Promise<StageResult> {
 // Best-effort, non-blocking match of a question to a prepared Q&A index.
 // Runs on the fast model; returns the matched index or null.
 export async function matchPreparedQuestion(
+  client: Client,
   question: string,
   questions: string[],
 ): Promise<number | null> {
   if (questions.length === 0) return null;
   try {
     const list = questions.map((q, i) => `${i}: ${q}`).join("\n");
-    const msg = await anthropic.messages.create({
+    const msg = await client.messages.create({
       model: QUICK_MODEL,
       max_tokens: 10,
       thinking: { type: "disabled" },
@@ -86,7 +89,7 @@ export async function matchPreparedQuestion(
       messages: [{ role: "user", content: question }],
     });
     const txt = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .filter((b): b is AnthropicSDK.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("")
       .trim();
@@ -99,11 +102,12 @@ export async function matchPreparedQuestion(
 
 // Predict up to two likely follow-up questions after an answer. Non-blocking.
 export async function predictFollowUps(
+  client: Client,
   question: string,
   answer: string,
 ): Promise<string[]> {
   try {
-    const msg = await anthropic.messages.create({
+    const msg = await client.messages.create({
       model: QUICK_MODEL,
       max_tokens: 120,
       thinking: { type: "disabled" },
@@ -113,7 +117,7 @@ export async function predictFollowUps(
       messages: [{ role: "user", content: `Q: ${question}\nA: ${answer}` }],
     });
     const txt = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .filter((b): b is AnthropicSDK.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("")
       .trim();

@@ -1,6 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import { pool, query } from "../db.js";
+import { clientForUser } from "../anthropic.js";
+import { query } from "../db.js";
 import type { InterviewRow } from "../domain.js";
 import { requireAuth } from "../auth/middleware.js";
 import { canAccessInterview, canManageInterview } from "../auth/permissions.js";
@@ -210,6 +211,8 @@ async function runAnswer({ interview, question, action, imageBlock }: RunArgs) {
   const ac = new AbortController();
   aborters.set(interview.id, ac);
 
+  // Use the interview owner's Anthropic key (falls back to the env key).
+  const client = await clientForUser(interview.owner_id);
   const resumeText = await effectiveResumeText(interview);
   const qa = await effectiveQA(interview);
   const prevSummary = await previousSummary(interview);
@@ -228,7 +231,7 @@ async function runAnswer({ interview, question, action, imageBlock }: RunArgs) {
 
   // Non-blocking prepared-answer match for the label.
   let qaRef: string | null = null;
-  const qaMatchPromise = matchPreparedQuestion(question, qa.map((q) => q.question)).then((idx) => {
+  const qaMatchPromise = matchPreparedQuestion(client, question, qa.map((q) => q.question)).then((idx) => {
     if (idx != null) {
       qaRef = `${idx}`;
       inflight.qaRef = qaRef;
@@ -250,7 +253,7 @@ async function runAnswer({ interview, question, action, imageBlock }: RunArgs) {
       { role: "user" as const, content: [...questionBlocks, { type: "text", text: quickInstruction(interview.interview_type) + extra }] },
     ];
     const quick = await streamStage({
-      model: QUICK_MODEL, system, messages: quickMessages, maxTokens: 200, thinkingOff: true,
+      client, model: QUICK_MODEL, system, messages: quickMessages, maxTokens: 200, thinkingOff: true,
       signal: ac.signal,
       onDelta: (t) => { inflight.quick += t; broadcast(interview.id, "quick_delta", { messageId, text: t }); },
     });
@@ -262,7 +265,7 @@ async function runAnswer({ interview, question, action, imageBlock }: RunArgs) {
       { role: "user" as const, content: [...questionBlocks, { type: "text", text: detailInstruction(interview.interview_type, quick.text) + extra }] },
     ];
     const detail = await streamStage({
-      model: interview.model, system, messages: detailMessages, maxTokens: 2048,
+      client, model: interview.model, system, messages: detailMessages, maxTokens: 2048,
       effort: "low", cacheHistory: true, signal: ac.signal,
       onDelta: (t) => { inflight.content += t; broadcast(interview.id, "delta", { messageId, text: t }); },
     });
@@ -278,7 +281,7 @@ async function runAnswer({ interview, question, action, imageBlock }: RunArgs) {
     broadcast(interview.id, "answer_done", { messageId, qaRef, quickMs: quick.ms, detailMs: detail.ms });
 
     // Likely follow-ups (after the answer; never delays it).
-    predictFollowUps(question, detail.text).then(async (fu) => {
+    predictFollowUps(client, question, detail.text).then(async (fu) => {
       if (fu.length === 0) return;
       await query(`UPDATE interview_messages SET follow_ups=$2 WHERE id=$1`, [messageId, JSON.stringify(fu)]);
       broadcast(interview.id, "follow_ups", { messageId, followUps: fu });
@@ -323,8 +326,8 @@ async function rollUpHistory(interviewId: string) {
   const transcript = toFold
     .map((r) => (r.role === "user" ? `Q: ${r.content}` : `A: ${[r.quick, r.content].filter(Boolean).join(" ")}`))
     .join("\n");
-  const { anthropic } = await import("../anthropic.js");
-  const msg = await anthropic.messages.create({
+  const client = await clientForUser(interview.owner_id);
+  const msg = await client.messages.create({
     model: QUICK_MODEL, max_tokens: 1500,
     system: "Summarise this interview transcript so far into compact notes that preserve what was asked and answered.",
     messages: [
