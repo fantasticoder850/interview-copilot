@@ -4,7 +4,7 @@ export const registerSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(200),
   password: z.string().min(8).max(200),
-  requestedRole: z.enum(["manager", "viewer"]),
+  requestedRole: z.enum(["manager", "candidate"]),
 });
 
 export const loginSchema = z.object({
@@ -46,7 +46,7 @@ export const interviewSchema = z.object({
   companyNotes: z.string().max(10_000).optional().nullable(),
   answerLanguage: z.string().trim().min(1).max(60).default("English"),
   model: z.string().max(60),
-  viewerIds: z.array(z.string().uuid()).default([]),
+  candidateIds: z.array(z.string().uuid()).default([]),
 });
 
 // Helper: turn a ZodError into a flat message for the client.

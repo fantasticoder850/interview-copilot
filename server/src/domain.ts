@@ -1,4 +1,4 @@
-export type Role = "admin" | "manager" | "viewer";
+export type Role = "admin" | "manager" | "candidate";
 export type UserStatus = "pending" | "approved" | "rejected" | "disabled";
 
 export interface User {
@@ -6,7 +6,7 @@ export interface User {
   email: string;
   name: string;
   role: Role;
-  requested_role: "manager" | "viewer" | null;
+  requested_role: "manager" | "candidate" | null;
   status: UserStatus;
   approved_by: string | null;
   approved_at: string | null;

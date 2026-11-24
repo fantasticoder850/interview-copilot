@@ -9,33 +9,33 @@ import { zodMessage } from "../validation.js";
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireRole("admin"));
 
-// List all users (with each viewer's assigned manager ids).
+// List all users (with each candidate's assigned manager ids).
 adminRouter.get("/users", async (_req, res) => {
   const { rows } = await query<User>(
     `SELECT id, email, name, role, requested_role, status, approved_by,
             approved_at, created_at
        FROM users ORDER BY created_at DESC`,
   );
-  const { rows: links } = await query<{ manager_id: string; viewer_id: string }>(
-    `SELECT manager_id, viewer_id FROM manager_viewers`,
+  const { rows: links } = await query<{ manager_id: string; candidate_id: string }>(
+    `SELECT manager_id, candidate_id FROM manager_candidates`,
   );
-  const managersByViewer = new Map<string, string[]>();
+  const managersByCandidate = new Map<string, string[]>();
   for (const l of links) {
-    const arr = managersByViewer.get(l.viewer_id) ?? [];
+    const arr = managersByCandidate.get(l.candidate_id) ?? [];
     arr.push(l.manager_id);
-    managersByViewer.set(l.viewer_id, arr);
+    managersByCandidate.set(l.candidate_id, arr);
   }
   res.json(
     rows.map((u) => ({
       ...publicUser(u),
-      managerIds: managersByViewer.get(u.id) ?? [],
+      managerIds: managersByCandidate.get(u.id) ?? [],
     })),
   );
 });
 
 const patchSchema = z.object({
   status: z.enum(["pending", "approved", "rejected", "disabled"]).optional(),
-  role: z.enum(["admin", "manager", "viewer"]).optional(),
+  role: z.enum(["admin", "manager", "candidate"]).optional(),
   password: z.string().min(8).max(200).optional(),
 });
 
@@ -80,9 +80,9 @@ adminRouter.patch("/users/:id", async (req, res) => {
   res.json(publicUser(rows[0]));
 });
 
-// Replace the set of managers a viewer is assigned to.
+// Replace the set of managers a candidate is assigned to.
 const managersSchema = z.object({ managerIds: z.array(z.string().uuid()) });
-adminRouter.put("/viewers/:id/managers", async (req, res) => {
+adminRouter.put("/candidates/:id/managers", async (req, res) => {
   const parsed = managersSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: zodMessage(parsed.error) });
 
@@ -90,9 +90,9 @@ adminRouter.put("/viewers/:id/managers", async (req, res) => {
     `SELECT role FROM users WHERE id = $1`,
     [req.params.id],
   );
-  if (vrows.length === 0) return res.status(404).json({ error: "Viewer not found" });
-  if (vrows[0].role !== "viewer") {
-    return res.status(400).json({ error: "That user is not a viewer" });
+  if (vrows.length === 0) return res.status(404).json({ error: "Candidate not found" });
+  if (vrows[0].role !== "candidate") {
+    return res.status(400).json({ error: "That user is not a candidate" });
   }
 
   // Validate all manager ids are managers.
@@ -111,10 +111,10 @@ adminRouter.put("/viewers/:id/managers", async (req, res) => {
   const conn = await pool.connect();
   try {
     await conn.query("BEGIN");
-    await conn.query(`DELETE FROM manager_viewers WHERE viewer_id = $1`, [req.params.id]);
+    await conn.query(`DELETE FROM manager_candidates WHERE candidate_id = $1`, [req.params.id]);
     for (const managerId of ids) {
       await conn.query(
-        `INSERT INTO manager_viewers (manager_id, viewer_id) VALUES ($1, $2)`,
+        `INSERT INTO manager_candidates (manager_id, candidate_id) VALUES ($1, $2)`,
         [managerId, req.params.id],
       );
     }

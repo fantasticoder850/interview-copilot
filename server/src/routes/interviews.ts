@@ -4,7 +4,7 @@ import { pool, query } from "../db.js";
 import type { InterviewRow } from "../domain.js";
 import { requireAuth } from "../auth/middleware.js";
 import {
-  allowedViewerIds,
+  allowedCandidateIds,
   canAccessInterview,
   canManageInterview,
 } from "../auth/permissions.js";
@@ -41,10 +41,10 @@ function requireManage(req: Request, res: Response, next: NextFunction) {
 }
 const getIv = (req: Request) => (req as any).interview as InterviewRow;
 
-async function assignedViewers(interviewId: string) {
+async function assignedCandidates(interviewId: string) {
   const { rows } = await query(
     `SELECT u.id, u.name, u.email FROM users u
-       JOIN interview_viewers iv ON iv.viewer_id = u.id
+       JOIN interview_candidates iv ON iv.candidate_id = u.id
       WHERE iv.interview_id = $1 ORDER BY u.name`,
     [interviewId],
   );
@@ -62,8 +62,8 @@ interviewsRouter.get("/", async (req, res) => {
     rows = (await query<InterviewRow>(`SELECT * FROM interviews WHERE owner_id = $1 ORDER BY updated_at DESC`, [user.id])).rows;
   } else {
     rows = (await query<InterviewRow>(
-      `SELECT i.* FROM interviews i JOIN interview_viewers iv ON iv.interview_id = i.id
-        WHERE iv.viewer_id = $1 ORDER BY i.updated_at DESC`,
+      `SELECT i.* FROM interviews i JOIN interview_candidates iv ON iv.interview_id = i.id
+        WHERE iv.candidate_id = $1 ORDER BY i.updated_at DESC`,
       [user.id],
     )).rows;
   }
@@ -80,16 +80,16 @@ function summaryRow(i: InterviewRow) {
 
 interviewsRouter.post("/", async (req, res) => {
   const user = req.user!;
-  if (user.role === "viewer") return res.status(403).json({ error: "Forbidden" });
+  if (user.role === "candidate") return res.status(403).json({ error: "Forbidden" });
   const parsed = interviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: zodMessage(parsed.error) });
   const d = parsed.data;
   if (!isValidModel(d.model)) return res.status(400).json({ error: "Invalid model" });
 
-  const allowed = await allowedViewerIds(user);
-  const viewerIds = [...new Set(d.viewerIds)];
-  if (viewerIds.some((v) => !allowed.has(v))) {
-    return res.status(403).json({ error: "You can only assign your own viewers" });
+  const allowed = await allowedCandidateIds(user);
+  const candidateIds = [...new Set(d.candidateIds)];
+  if (candidateIds.some((v) => !allowed.has(v))) {
+    return res.status(403).json({ error: "You can only assign your own candidates" });
   }
   if (d.resumeId) {
     const r = await query(`SELECT 1 FROM resumes WHERE id = $1 AND ($2 = 'admin' OR owner_id = $3)`, [d.resumeId, user.role, user.id]);
@@ -108,8 +108,8 @@ interviewsRouter.post("/", async (req, res) => {
        d.interviewType, d.interviewers, d.company, d.companyNotes ?? null, d.answerLanguage, d.model],
     );
     const interview = rows[0];
-    for (const v of viewerIds) {
-      await conn.query(`INSERT INTO interview_viewers (interview_id, viewer_id) VALUES ($1,$2)`, [interview.id, v]);
+    for (const v of candidateIds) {
+      await conn.query(`INSERT INTO interview_candidates (interview_id, candidate_id) VALUES ($1,$2)`, [interview.id, v]);
     }
     await conn.query("COMMIT");
     res.status(201).json(interview);
@@ -127,7 +127,7 @@ interviewsRouter.get("/:id", loadForRead, async (req, res) => {
   const i = getIv(req);
   res.json({
     ...i,
-    viewers: await assignedViewers(i.id),
+    candidates: await assignedCandidates(i.id),
     canManage: canManageInterview(req.user!, i),
   });
 });
@@ -152,9 +152,9 @@ interviewsRouter.patch("/:id", loadForRead, requireManage, async (req, res) => {
       vals.push((d as any)[key]);
     }
   }
-  if (d.viewerIds !== undefined) {
-    const allowed = await allowedViewerIds(req.user!);
-    if (d.viewerIds.some((v) => !allowed.has(v))) return res.status(403).json({ error: "You can only assign your own viewers" });
+  if (d.candidateIds !== undefined) {
+    const allowed = await allowedCandidateIds(req.user!);
+    if (d.candidateIds.some((v) => !allowed.has(v))) return res.status(403).json({ error: "You can only assign your own candidates" });
   }
 
   const conn = await pool.connect();
@@ -165,10 +165,10 @@ interviewsRouter.patch("/:id", loadForRead, requireManage, async (req, res) => {
       vals.push(i.id);
       await conn.query(`UPDATE interviews SET ${fields.join(", ")} WHERE id = $${vals.length}`, vals);
     }
-    if (d.viewerIds !== undefined) {
-      await conn.query(`DELETE FROM interview_viewers WHERE interview_id = $1`, [i.id]);
-      for (const v of [...new Set(d.viewerIds)]) {
-        await conn.query(`INSERT INTO interview_viewers (interview_id, viewer_id) VALUES ($1,$2)`, [i.id, v]);
+    if (d.candidateIds !== undefined) {
+      await conn.query(`DELETE FROM interview_candidates WHERE interview_id = $1`, [i.id]);
+      for (const v of [...new Set(d.candidateIds)]) {
+        await conn.query(`INSERT INTO interview_candidates (interview_id, candidate_id) VALUES ($1,$2)`, [i.id, v]);
       }
     }
     await conn.query("COMMIT");
@@ -179,7 +179,7 @@ interviewsRouter.patch("/:id", loadForRead, requireManage, async (req, res) => {
     conn.release();
   }
   const updated = await loadInterview(i.id);
-  res.json({ ...updated, viewers: await assignedViewers(i.id) });
+  res.json({ ...updated, candidates: await assignedCandidates(i.id) });
 });
 
 interviewsRouter.delete("/:id", loadForRead, requireManage, async (req, res) => {
@@ -243,8 +243,8 @@ interviewsRouter.post("/:id/new-version", loadForRead, requireManage, async (req
     );
     const v2 = rows[0];
     await conn.query(
-      `INSERT INTO interview_viewers (interview_id, viewer_id)
-       SELECT $1, viewer_id FROM interview_viewers WHERE interview_id = $2`,
+      `INSERT INTO interview_candidates (interview_id, candidate_id)
+       SELECT $1, candidate_id FROM interview_candidates WHERE interview_id = $2`,
       [v2.id, i.id],
     );
     await conn.query("COMMIT");

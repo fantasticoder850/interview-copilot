@@ -43,11 +43,11 @@ export const api = {
   adminUsers: () => req<AdminUser[]>("/admin/users"),
   patchUser: (id: string, patch: { status?: string; role?: string; password?: string }) =>
     req<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body: body(patch) }),
-  setViewerManagers: (viewerId: string, managerIds: string[]) =>
-    req(`/admin/viewers/${viewerId}/managers`, { method: "PUT", body: body({ managerIds }) }),
+  setCandidateManagers: (candidateId: string, managerIds: string[]) =>
+    req(`/admin/candidates/${candidateId}/managers`, { method: "PUT", body: body({ managerIds }) }),
 
   // people
-  viewers: () => req<Person[]>("/viewers"),
+  candidates: () => req<Person[]>("/candidates"),
   models: () => req<Model[]>("/models"),
 
   // resumes

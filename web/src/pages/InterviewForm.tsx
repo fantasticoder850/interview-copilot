@@ -7,7 +7,7 @@ import type { Model, Person, ResumeSummary } from "../types";
 const EMPTY = {
   jobTitle: "", jobDescription: "", systemPrompt: "", resumeId: "",
   interviewType: "intro", interviewers: "", company: "", companyNotes: "",
-  answerLanguage: "English", model: "claude-opus-5-5", viewerIds: [] as string[],
+  answerLanguage: "English", model: "claude-opus-5-5", candidateIds: [] as string[],
 };
 
 export function InterviewForm() {
@@ -16,7 +16,7 @@ export function InterviewForm() {
   const nav = useNavigate();
 
   const [form, setForm] = useState({ ...EMPTY });
-  const [viewers, setViewers] = useState<Person[]>([]);
+  const [candidates, setCandidates] = useState<Person[]>([]);
   const [resumes, setResumes] = useState<ResumeSummary[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export function InterviewForm() {
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    api.viewers().then(setViewers).catch(() => {});
+    api.candidates().then(setCandidates).catch(() => {});
     api.resumes().then(setResumes).catch(() => {});
     api.models().then(setModels).catch(() => {});
     if (!isNew) {
@@ -33,7 +33,7 @@ export function InterviewForm() {
         jobTitle: i.job_title, jobDescription: i.job_description ?? "", systemPrompt: i.system_prompt,
         resumeId: i.resume_id ?? "", interviewType: i.interview_type, interviewers: i.interviewers,
         company: i.company, companyNotes: i.company_notes ?? "", answerLanguage: i.answer_language,
-        model: i.model, viewerIds: i.viewers.map((v) => v.id),
+        model: i.model, candidateIds: i.candidates.map((v) => v.id),
       })).catch((e) => setError(e.message));
     }
   }, [id]);
@@ -83,12 +83,12 @@ export function InterviewForm() {
             {models.map((m) => <option key={m.id} value={m.id}>{m.label} — {m.description}</option>)}
           </select>
         </label>
-        <label>Assigned viewers
+        <label>Assigned candidates
           <MultiSelect
-            options={viewers.map((v) => ({ id: v.id, label: v.name, sub: v.email }))}
-            selected={form.viewerIds}
-            onChange={(ids) => set("viewerIds", ids)}
-            placeholder="Assign viewers…"
+            options={candidates.map((v) => ({ id: v.id, label: v.name, sub: v.email }))}
+            selected={form.candidateIds}
+            onChange={(ids) => set("candidateIds", ids)}
+            placeholder="Assign candidates…"
           />
         </label>
       </div>

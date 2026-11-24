@@ -23,8 +23,8 @@ export function Users() {
     if (!pw) return;
     try { await api.patchUser(id, { password: pw }); alert("Password reset."); } catch (e: any) { setError(e.message); }
   }
-  async function setManagers(viewerId: string, managerIds: string[]) {
-    try { await api.setViewerManagers(viewerId, managerIds); await load(); } catch (e: any) { setError(e.message); }
+  async function setManagers(candidateId: string, managerIds: string[]) {
+    try { await api.setCandidateManagers(candidateId, managerIds); await load(); } catch (e: any) { setError(e.message); }
   }
 
   return (
@@ -33,7 +33,7 @@ export function Users() {
       {error && <div className="error-banner">{error}</div>}
       <table className="grid">
         <thead>
-          <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Managers (viewers only)</th><th>Actions</th></tr>
+          <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Managers (candidates only)</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {users.map((u) => (
@@ -44,12 +44,12 @@ export function Users() {
                 <select value={u.role} onChange={(e) => patch(u.id, { role: e.target.value })}>
                   <option value="admin">admin</option>
                   <option value="manager">manager</option>
-                  <option value="viewer">viewer</option>
+                  <option value="candidate">candidate</option>
                 </select>
               </td>
               <td><span className={`badge badge-${u.status}`}>{u.status}</span></td>
               <td style={{ minWidth: 220 }}>
-                {u.role === "viewer" ? (
+                {u.role === "candidate" ? (
                   <MultiSelect
                     options={managers}
                     selected={u.managerIds}

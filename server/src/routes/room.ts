@@ -106,7 +106,7 @@ roomRouter.post("/:id/notes", loadForRead, async (req, res) => {
 
 roomRouter.post("/:id/messages", loadForRead, upload.single("image"), async (req, res) => {
   const interview = getIv(req);
-  // Any assigned viewer, manager, or admin may ask (read-only is a client toggle).
+  // Any assigned candidate, manager, or admin may ask (read-only is a client toggle).
   if (interview.status !== "interviewing") {
     return res.status(409).json({ error: "The interview is not in progress" });
   }

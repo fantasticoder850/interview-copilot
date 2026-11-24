@@ -9,7 +9,7 @@ export function Account() {
     <div className="page">
       <h1>Account</h1>
       <ProfileForm />
-      {user.role !== "viewer" && <ApiKeySection />}
+      {user.role !== "candidate" && <ApiKeySection />}
       <p className="muted">Role: {user.role}</p>
     </div>
   );

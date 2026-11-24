@@ -31,7 +31,7 @@ export function InterviewRoom() {
   const lastQuestionRef = useRef<string>("");
 
   const canManage = interview?.canManage ?? false;
-  const isViewer = user?.role === "viewer";
+  const isCandidate = user?.role === "candidate";
 
   const refetch = useCallback(async () => {
     if (!id) return;
@@ -159,7 +159,7 @@ export function InterviewRoom() {
 
   if (!interview) return <div className="page">{error ? <div className="error-banner">{error}</div> : "Loading…"}</div>;
 
-  const composerVisible = canManage || (isViewer && !readOnly);
+  const composerVisible = canManage || (isCandidate && !readOnly);
 
   return (
     <div className="room">
@@ -208,7 +208,7 @@ export function InterviewRoom() {
             ))}
           </div>
 
-          {isViewer && (
+          {isCandidate && (
             <div className="readonly-bar">
               <label><input type="checkbox" checked={readOnly} onChange={toggleReadOnly} /> Read-only</label>
             </div>
@@ -226,7 +226,7 @@ export function InterviewRoom() {
               </label>
               {image && <span className="img-name">{image.name}</span>}
               <button onClick={send} disabled={!!streamingId}>Ask</button>
-              {canManage && <button className="note-btn" onClick={sendNote} title="Send a note to viewers (no AI)">Note</button>}
+              {canManage && <button className="note-btn" onClick={sendNote} title="Send a note to candidates (no AI)">Note</button>}
               {streamingId && <button className="stop-btn" onClick={() => id && api.stop(id)}>Stop</button>}
             </div>
           )}

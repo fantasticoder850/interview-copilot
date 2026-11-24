@@ -1,4 +1,4 @@
-export type Role = "admin" | "manager" | "viewer";
+export type Role = "admin" | "manager" | "candidate";
 export type UserStatus = "pending" | "approved" | "rejected" | "disabled";
 
 export interface CurrentUser {
@@ -6,7 +6,7 @@ export interface CurrentUser {
   email: string;
   name: string;
   role: Role;
-  requested_role: "manager" | "viewer" | null;
+  requested_role: "manager" | "candidate" | null;
   status: UserStatus;
   created_at: string;
 }
@@ -75,7 +75,7 @@ export interface Interview extends InterviewSummary {
   answer_language: string;
   prep_pack: string | null;
   summary: string | null;
-  viewers: Person[];
+  candidates: Person[];
   canManage: boolean;
 }
 

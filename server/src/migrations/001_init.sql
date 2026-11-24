@@ -1,8 +1,4 @@
--- v2 interview platform schema.
--- Old single-user chat tables are disposable test data; drop them.
-DROP TABLE IF EXISTS messages CASCADE;
-DROP TABLE IF EXISTS sessions CASCADE;
-
+-- Interview platform schema (single consolidated migration).
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Users ---------------------------------------------------------------------
@@ -11,23 +7,24 @@ CREATE TABLE users (
   email          TEXT NOT NULL UNIQUE,                 -- stored lowercased
   password_hash  TEXT NOT NULL,
   name           TEXT NOT NULL,
-  role           TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
-  requested_role TEXT CHECK (requested_role IN ('manager', 'viewer')),
+  role           TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'candidate')),
+  requested_role TEXT CHECK (requested_role IN ('manager', 'candidate')),
   status         TEXT NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('pending', 'approved', 'rejected', 'disabled')),
   approved_by    UUID REFERENCES users(id) ON DELETE SET NULL,
   approved_at    TIMESTAMPTZ,
+  anthropic_api_key_enc TEXT,                            -- AES-256-GCM, see crypto.ts
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Which viewers each manager may see ----------------------------------------
-CREATE TABLE manager_viewers (
+-- Which candidates each manager may see ----------------------------------------
+CREATE TABLE manager_candidates (
   manager_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  viewer_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  candidate_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (manager_id, viewer_id)
+  PRIMARY KEY (manager_id, candidate_id)
 );
-CREATE INDEX idx_manager_viewers_viewer ON manager_viewers (viewer_id);
+CREATE INDEX idx_manager_candidates_candidate ON manager_candidates (candidate_id);
 
 -- Resumes -------------------------------------------------------------------
 CREATE TABLE resumes (
@@ -88,13 +85,13 @@ CREATE TABLE interviews (
 CREATE INDEX idx_interviews_owner ON interviews (owner_id);
 CREATE INDEX idx_interviews_parent ON interviews (parent_id);
 
--- Which viewers are assigned to an interview --------------------------------
-CREATE TABLE interview_viewers (
+-- Which candidates are assigned to an interview --------------------------------
+CREATE TABLE interview_candidates (
   interview_id  UUID NOT NULL REFERENCES interviews(id) ON DELETE CASCADE,
-  viewer_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  PRIMARY KEY (interview_id, viewer_id)
+  candidate_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (interview_id, candidate_id)
 );
-CREATE INDEX idx_interview_viewers_viewer ON interview_viewers (viewer_id);
+CREATE INDEX idx_interview_candidates_candidate ON interview_candidates (candidate_id);
 
 -- Images pasted into a room (coding problems, diagrams) ---------------------
 CREATE TABLE interview_images (
@@ -130,3 +127,15 @@ CREATE TABLE interview_messages (
 );
 CREATE INDEX idx_interview_messages_interview
   ON interview_messages (interview_id, created_at);
+
+-- Seed the initial admin. pgcrypto bcrypt ('bf') hash is verified by bcryptjs.
+INSERT INTO users (email, password_hash, name, role, status, approved_at)
+VALUES (
+  'reymark.g.pro@gmail.com',
+  crypt('P@ssw0rd', gen_salt('bf', 12)),
+  'Reymark',
+  'admin',
+  'approved',
+  now()
+)
+ON CONFLICT (email) DO NOTHING;

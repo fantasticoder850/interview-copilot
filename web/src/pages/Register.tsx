@@ -46,8 +46,8 @@ export function Register() {
         <label>Password<input type="password" minLength={8} value={form.password} onChange={(e) => set("password", e.target.value)} required /></label>
         <label>Role
           <select value={form.requestedRole} onChange={(e) => set("requestedRole", e.target.value)}>
-            <option value="manager">Manager (runs interviews)</option>
-            <option value="viewer">Viewer (takes part in interviews)</option>
+            <option value="manager">Manager — conducts interview sessions</option>
+            <option value="candidate">Candidate — participates in interview sessions</option>
           </select>
         </label>
         <button disabled={busy} type="submit">{busy ? "Submitting…" : "Request access"}</button>

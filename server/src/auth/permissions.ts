@@ -8,9 +8,9 @@ export async function canAccessInterview(
 ): Promise<boolean> {
   if (user.role === "admin") return true;
   if (user.role === "manager") return interview.owner_id === user.id;
-  // viewer: must be assigned to it
+  // candidate: must be assigned to it
   const { rowCount } = await query(
-    `SELECT 1 FROM interview_viewers WHERE interview_id = $1 AND viewer_id = $2`,
+    `SELECT 1 FROM interview_candidates WHERE interview_id = $1 AND candidate_id = $2`,
     [interview.id, user.id],
   );
   return rowCount! > 0;
@@ -22,22 +22,22 @@ export function canManageInterview(user: User, interview: InterviewRow): boolean
   return user.role === "manager" && interview.owner_id === user.id;
 }
 
-// The set of viewer ids this user is allowed to assign to an interview.
-export async function allowedViewerIds(user: User): Promise<Set<string>> {
+// The set of candidate ids this user is allowed to assign to an interview.
+export async function allowedCandidateIds(user: User): Promise<Set<string>> {
   if (user.role === "admin") {
     const { rows } = await query<{ id: string }>(
-      `SELECT id FROM users WHERE role = 'viewer' AND status = 'approved'`,
+      `SELECT id FROM users WHERE role = 'candidate' AND status = 'approved'`,
     );
     return new Set(rows.map((r) => r.id));
   }
   if (user.role === "manager") {
-    const { rows } = await query<{ viewer_id: string }>(
-      `SELECT mv.viewer_id FROM manager_viewers mv
-         JOIN users u ON u.id = mv.viewer_id
+    const { rows } = await query<{ candidate_id: string }>(
+      `SELECT mv.candidate_id FROM manager_candidates mv
+         JOIN users u ON u.id = mv.candidate_id
         WHERE mv.manager_id = $1 AND u.status = 'approved'`,
       [user.id],
     );
-    return new Set(rows.map((r) => r.viewer_id));
+    return new Set(rows.map((r) => r.candidate_id));
   }
   return new Set();
 }

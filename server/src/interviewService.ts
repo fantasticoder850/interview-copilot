@@ -48,7 +48,7 @@ export async function previousSummary(interview: InterviewRow): Promise<string |
 
 // Build the message history for a request: optional rolled-up summary of early
 // turns, then the recent question/answer turns verbatim. Notes are excluded —
-// they are manager-to-viewer only and never sent to the model.
+// they are manager-to-candidate only and never sent to the model.
 export async function buildHistory(interview: InterviewRow): Promise<Anthropic.MessageParam[]> {
   const messages: Anthropic.MessageParam[] = [];
 
