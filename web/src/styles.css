@@ -1,0 +1,387 @@
+:root {
+  --bg: #1a1a1a;
+  --sidebar-bg: #141414;
+  --panel-bg: #1f1f1f;
+  --border: #2e2e2e;
+  --text: #ececec;
+  --text-dim: #9a9a9a;
+  --accent: #10a37f;
+  --accent-hover: #0e8e6e;
+  --user-bubble: #2a2a2a;
+  --error: #e5534b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.layout {
+  display: flex;
+  height: 100vh;
+}
+
+/* ── Sidebar ───────────────────────────────── */
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-title {
+  display: block;
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+
+.new-btn {
+  width: 100%;
+  padding: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.new-btn:hover {
+  background: var(--accent-hover);
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.empty-hint {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+.session-item:hover {
+  background: #202020;
+}
+.session-item.active {
+  background: #262626;
+}
+
+.session-main {
+  flex: 1;
+  min-width: 0;
+}
+.session-title {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0;
+}
+.session-item:hover .delete-btn {
+  opacity: 1;
+}
+.delete-btn:hover {
+  color: var(--error);
+}
+
+/* ── Chat pane ─────────────────────────────── */
+.chat-pane,
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.welcome {
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.chat-title {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-selector {
+  background: var(--panel-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.model-selector:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.empty-chat {
+  max-width: 560px;
+  margin: 80px auto;
+  text-align: center;
+  color: var(--text-dim);
+}
+.empty-chat h2 {
+  color: var(--text);
+}
+
+.bubble-row {
+  display: flex;
+  margin-bottom: 18px;
+}
+.bubble-row.user {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 720px;
+}
+.bubble-role {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.bubble-content {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--panel-bg);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.55;
+  font-size: 15px;
+}
+.bubble-row.user .bubble-content {
+  background: var(--user-bubble);
+}
+
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.error-banner {
+  margin: 0 24px 12px;
+  padding: 10px 14px;
+  background: rgba(229, 83, 75, 0.12);
+  border: 1px solid var(--error);
+  color: #f3b0ab;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* ── Composer ──────────────────────────────── */
+.composer {
+  display: flex;
+  gap: 10px;
+  padding: 16px 24px 22px;
+  border-top: 1px solid var(--border);
+}
+.composer textarea {
+  flex: 1;
+  resize: none;
+  background: var(--panel-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  max-height: 200px;
+}
+.composer textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.send-btn {
+  padding: 0 20px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.send-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Mobile drawer controls (hidden on desktop) ─ */
+.sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.app-title {
+  margin-bottom: 0;
+}
+
+.menu-btn,
+.close-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.menu-btn:hover,
+.close-btn:hover {
+  background: #262626;
+}
+
+.welcome-menu {
+  position: absolute;
+  top: 14px;
+  left: 12px;
+}
+
+.backdrop {
+  display: none;
+}
+
+/* ── Mobile layout ─────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 84%;
+    max-width: 320px;
+    z-index: 30;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .backdrop.visible {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 20;
+  }
+
+  .menu-btn {
+    display: inline-flex;
+  }
+  .close-btn {
+    display: inline-flex;
+  }
+
+  .chat-header {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .chat-title {
+    flex: 1;
+    font-size: 14px;
+  }
+  .model-selector {
+    max-width: 44vw;
+  }
+
+  .messages {
+    padding: 16px 14px;
+  }
+  .bubble {
+    max-width: 100%;
+  }
+  .bubble-row.user .bubble {
+    max-width: 90%;
+  }
+
+  .composer {
+    padding: 12px 14px 16px;
+  }
+  .error-banner {
+    margin: 0 14px 10px;
+  }
+}
