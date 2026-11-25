@@ -72,14 +72,19 @@ module.exports = {
     {
       name: "interview-web",
       cwd: path.join(ROOT, "web"),
-      script: "npm",
-      args: `run preview -- --port ${webPort} --host`,
-      interpreter: "none",
+      // Run Vite's node entry directly (not via `npm run preview`). npm does
+      // not forward signals to its child, so on `pm2 stop` PM2 kills npm while
+      // the real vite process is reparented to init and keeps holding the port
+      // (the recurring "I stopped it but it's still up" orphan). Launching the
+      // JS entry makes vite PM2's own child, so SIGINT reaches it and it exits.
+      script: "node_modules/vite/bin/vite.js",
+      args: `preview --port ${webPort} --host`,
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
       max_restarts: 15,
       min_uptime: "10s",
+      kill_timeout: 5000,
       env: {
         NODE_ENV: "production",
       },

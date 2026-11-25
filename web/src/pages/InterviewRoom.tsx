@@ -8,7 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { connectRoom, type RoomEvent } from "../realtime";
 import type { Interview, Message } from "../types";
 
-type Tab = "chat" | "resume" | "prep" | "summary";
+type AsideTab = "resume" | "prep" | "summary";
 
 export function InterviewRoom() {
   const { id } = useParams();
@@ -19,12 +19,15 @@ export function InterviewRoom() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [presence, setPresence] = useState(0);
-  const [tab, setTab] = useState<Tab>("chat");
+  const [connected, setConnected] = useState(false);
+  const [tab, setTab] = useState<AsideTab>("resume");
   const [error, setError] = useState<string | null>(null);
 
   const [input, setInput] = useState("");
   const [image, setImage] = useState<File | null>(null);
+  const [noteText, setNoteText] = useState("");
   const [readOnly, setReadOnly] = useState(() => localStorage.getItem(`ro:${id}`) !== "false");
+  const [readerScale, setReaderScale] = useState(1);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -45,7 +48,7 @@ export function InterviewRoom() {
   // SSE
   useEffect(() => {
     if (!id) return;
-    const disconnect = connectRoom(id, applyEvent, () => { refetch().catch(() => {}); });
+    const disconnect = connectRoom(id, applyEvent, () => { refetch().catch(() => {}); }, setConnected);
     return disconnect;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -112,6 +115,10 @@ export function InterviewRoom() {
     if (!el) return;
     pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
+  function followLatest() {
+    const el = scrollRef.current;
+    if (el) { el.scrollTop = el.scrollHeight; pinnedRef.current = true; }
+  }
 
   async function send() {
     if (!id || (!input.trim() && !image)) return;
@@ -130,9 +137,9 @@ export function InterviewRoom() {
     form.append("content", "");
     try { await api.ask(id, form); } catch (e: any) { setError(e.message); }
   }
-  async function sendNote() {
-    if (!id || !input.trim()) return;
-    const note = input.trim(); setInput("");
+  async function sendCoachNote() {
+    if (!id || !noteText.trim()) return;
+    const note = noteText.trim(); setNoteText("");
     try { await api.note(id, note); } catch (e: any) { setError(e.message); }
   }
   async function followUp(q: string) {
@@ -156,46 +163,130 @@ export function InterviewRoom() {
   function toggleReadOnly() {
     setReadOnly((v) => { localStorage.setItem(`ro:${id}`, String(!v)); return !v; });
   }
+  async function newVersion() {
+    if (!id) return;
+    const carry = confirm("Carry over the previous interview's summary as context?");
+    try { const v2 = await api.newVersion(id, carry); nav(`/interviews/${v2.id}/edit`); }
+    catch (e: any) { setError(e.message); }
+  }
 
-  if (!interview) return <div className="page">{error ? <div className="error-banner">{error}</div> : "Loading…"}</div>;
+  if (!interview) {
+    return (
+      <div className="loading-page">
+        {error ? <div className="error-banner">{error}</div> : <><span className="spinner" /><span>Loading room…</span></>}
+      </div>
+    );
+  }
 
   const composerVisible = canManage || (isCandidate && !readOnly);
+  const sessionControls = canManage && (
+    <div className="room-controls">
+      {interview.status !== "interviewing" && (
+        <button className="primary btn-sm" onClick={() => setStatus("interviewing")}>
+          {interview.status === "ended" ? "Resume" : "Start session"}
+        </button>
+      )}
+      {interview.status === "interviewing" && <button className="btn-sm" onClick={() => setStatus("ended")}>End session</button>}
+      {interview.status === "ended" && <button className="btn-sm" onClick={newVersion}>New version</button>}
+    </div>
+  );
 
+  const composer = composerVisible && (
+    interview.status === "interviewing" ? (
+      <div className="composer">
+        <textarea
+          rows={1} value={input} placeholder={canManage ? "Enter the interviewer's question…" : "Enter a practice question…"}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+        />
+        <label className="icon-btn img-btn" title="Attach screenshot">
+          📎<input type="file" accept="image/*" hidden onChange={(e) => setImage(e.target.files?.[0] ?? null)} />
+        </label>
+        {image && <span className="img-name">{image.name}</span>}
+        {streamingId
+          ? <button className="stop-btn" onClick={() => id && api.stop(id)}>Stop</button>
+          : <button className="primary" onClick={send} disabled={!input.trim() && !image}>Send</button>}
+      </div>
+    ) : (
+      <div className="composer-hint">{canManage ? "Start the session to ask questions." : "Waiting for the interview to start."}</div>
+    )
+  );
+
+  // ---- Candidate reader view ------------------------------------------------
+  if (isCandidate && !canManage) {
+    return (
+      <div className="room">
+        <header className="room-head">
+          <button className="link-btn" onClick={() => nav("/interviews")}>← Interviews</button>
+          <div className="room-title">
+            {interview.job_title}{interview.company && <span className="muted"> · {interview.company}</span>}
+          </div>
+          <span className="spacer" />
+          <span className={`connection ${connected ? "online" : "offline"}`}>{connected ? "Connected" : "Reconnecting…"}</span>
+        </header>
+        {error && <div style={{ padding: "0 var(--s5)" }}><div className="error-banner">{error}</div></div>}
+
+        <div className="reader-wrap" ref={scrollRef} onScroll={onScroll} style={{ ["--reader-scale" as any]: readerScale }}>
+          <div className="reader">
+            <div className="reader-status">
+              <StatusBadge status={interview.status} />
+              <label className="row small" style={{ gap: 6, color: "var(--muted)" }}>
+                <input type="checkbox" checked={readOnly} onChange={toggleReadOnly} style={{ width: "auto" }} /> Read-only
+              </label>
+            </div>
+
+            {messages.length === 0 ? (
+              <div className="reader-empty">
+                <p>{interview.status === "interviewing" ? "Waiting for the first answer…" : "The interview hasn't started yet."}</p>
+              </div>
+            ) : (
+              messages.map((m) => <ReaderMessage key={m.id} m={m} streaming={m.id === streamingId} />)
+            )}
+
+            <div className="reader-controls">
+              <button className="btn-sm" aria-label="Decrease text size" onClick={() => setReaderScale((s) => Math.max(0.85, +(s - 0.1).toFixed(2)))}>A−</button>
+              <button className="btn-sm" aria-label="Increase text size" onClick={() => setReaderScale((s) => Math.min(1.5, +(s + 0.1).toFixed(2)))}>A+</button>
+              <button className="btn-sm btn-ghost" onClick={followLatest}>Follow latest</button>
+            </div>
+          </div>
+        </div>
+
+        {composer}
+      </div>
+    );
+  }
+
+  // ---- Manager / admin workspace -------------------------------------------
   return (
     <div className="room">
       <header className="room-head">
         <button className="link-btn" onClick={() => nav("/interviews")}>← Interviews</button>
         <div className="room-title">
-          <strong>{interview.job_title}</strong>
+          {interview.job_title}
           {interview.company && <span className="muted"> · {interview.company}</span>}
-          <span className="muted"> · v{interview.version}</span>
         </div>
-        <StatusBadge status={interview.status} />
-        <span className="presence">{presence} watching</span>
         <span className="spacer" />
-        {canManage && (
-          <div className="room-controls">
-            {interview.status !== "interviewing" && <button onClick={() => setStatus("interviewing")}>{interview.status === "ended" ? "Resume" : "Start"}</button>}
-            {interview.status === "interviewing" && <button onClick={() => setStatus("ended")}>End</button>}
-            {interview.status === "ended" && <button onClick={() => newVersion()}>New version</button>}
-          </div>
-        )}
+        <span className={`connection ${connected ? "online" : "offline"}`}>{connected ? "Live" : "Reconnecting…"}</span>
       </header>
+      {error && <div style={{ padding: "0 var(--s6)" }}><div className="error-banner">{error}</div></div>}
 
-      {error && <div className="error-banner">{error}</div>}
+      <div className="room-body">
+        <section className="room-main">
+          <div className="room-main-head">
+            <StatusBadge status={interview.status} />
+            <span className="muted small">v{interview.version}</span>
+            <span className="presence">{presence} watching</span>
+            <span className="spacer" />
+            {sessionControls}
+          </div>
 
-      {canManage && (
-        <div className="tabs">
-          {(["chat", "resume", "prep", "summary"] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>
-          ))}
-        </div>
-      )}
-
-      {tab === "chat" && (
-        <>
           <div className="messages" ref={scrollRef} onScroll={onScroll}>
-            {messages.length === 0 && <p className="muted center">No messages yet.</p>}
+            {messages.length === 0 && (
+              <div className="empty-state">
+                <span className="empty-icon" aria-hidden="true">💬</span>
+                <p>No messages yet. {interview.status === "interviewing" ? "Ask the first question below." : "Start the session to begin."}</p>
+              </div>
+            )}
             {messages.map((m) => (
               <MessageBubble
                 key={m.id} message={m} interviewId={interview.id}
@@ -208,63 +299,70 @@ export function InterviewRoom() {
             ))}
           </div>
 
-          {isCandidate && (
-            <div className="readonly-bar">
-              <label><input type="checkbox" checked={readOnly} onChange={toggleReadOnly} /> Read-only</label>
-            </div>
-          )}
+          {composer}
+        </section>
 
-          {composerVisible && interview.status === "interviewing" && (
-            <div className="composer">
-              <textarea
-                rows={1} value={input} placeholder="Type the interviewer's question…"
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              />
-              <label className="img-btn" title="Attach screenshot">
-                📎<input type="file" accept="image/*" hidden onChange={(e) => setImage(e.target.files?.[0] ?? null)} />
-              </label>
-              {image && <span className="img-name">{image.name}</span>}
-              <button onClick={send} disabled={!!streamingId}>Ask</button>
-              {canManage && <button className="note-btn" onClick={sendNote} title="Send a note to candidates (no AI)">Note</button>}
-              {streamingId && <button className="stop-btn" onClick={() => id && api.stop(id)}>Stop</button>}
-            </div>
-          )}
-          {composerVisible && interview.status !== "interviewing" && (
-            <div className="composer-hint">{canManage ? "Start the interview to ask questions." : "Waiting for the interview to start."}</div>
-          )}
-        </>
-      )}
-
-      {tab === "resume" && canManage && <ResumeTab interview={interview} onReload={refetch} />}
-      {tab === "prep" && canManage && <GenTab kind="prep" interview={interview} onReload={refetch} />}
-      {tab === "summary" && canManage && <GenTab kind="summary" interview={interview} onReload={refetch} />}
+        <aside className="room-aside">
+          <div className="aside-tabs">
+            {(["resume", "prep", "summary"] as AsideTab[]).map((t) => (
+              <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+                {t === "resume" ? "Resume" : t === "prep" ? "Prep pack" : "Summary"}
+              </button>
+            ))}
+          </div>
+          <div className="aside-body">
+            {tab === "resume" && <ResumeTab interview={interview} onReload={refetch} />}
+            {tab === "prep" && <GenTab kind="prep" interview={interview} onReload={refetch} />}
+            {tab === "summary" && <GenTab kind="summary" interview={interview} onReload={refetch} />}
+          </div>
+          <div className="coach-note" style={{ borderTop: "1px solid var(--border)", padding: "var(--s4) var(--s5)" }}>
+            <h3>Coach note</h3>
+            <textarea rows={2} value={noteText} placeholder="Write feedback to candidates…" onChange={(e) => setNoteText(e.target.value)} />
+            <button className="btn-sm" onClick={sendCoachNote} disabled={!noteText.trim()}>Save note</button>
+          </div>
+        </aside>
+      </div>
     </div>
   );
+}
 
-  async function newVersion() {
-    if (!id) return;
-    const carry = confirm("Carry over the previous interview's summary as context?");
-    try { const v2 = await api.newVersion(id, carry); nav(`/interviews/${v2.id}/edit`); }
-    catch (e: any) { setError(e.message); }
+function ReaderMessage({ m, streaming }: { m: Message; streaming: boolean }) {
+  if (m.kind === "note") {
+    return (
+      <div className="row-msg note" style={{ marginBottom: "var(--s5)" }}>
+        <div className="note-bubble"><span className="note-tag">Note</span> {m.content}</div>
+      </div>
+    );
   }
+  if (m.role === "user") {
+    return <div className="q-label" style={{ margin: "var(--s5) 0 var(--s3)", fontSize: 14 }}>Interviewer asked: <strong style={{ color: "var(--text)" }}>{m.content}</strong></div>;
+  }
+  return (
+    <article className="reader-card" style={{ marginBottom: "var(--s5)" }}>
+      {m.qa_ref != null && <span className="prepared-tag">Prepared answer</span>}
+      {m.quick && <div className="opener">{m.quick}</div>}
+      {m.content && <div className="detail"><ReactMarkdown>{m.content}</ReactMarkdown></div>}
+      {streaming && <span className="caret" />}
+      {m.state === "stopped" && <div className="meta-note">Stopped</div>}
+      {m.state === "error" && <div className="meta-note err">Generation error</div>}
+    </article>
+  );
 }
 
 function ResumeTab({ interview, onReload }: { interview: Interview; onReload: () => void }) {
   const [text, setText] = useState(interview.resume_text ?? "");
   const [msg, setMsg] = useState<string | null>(null);
   return (
-    <div className="tab-body">
-      <p className="muted">
-        This interview's own copy of the resume. Edits affect the next answer only; the master resume is unchanged
-        until you save back.
+    <div className="stack">
+      <p className="muted small">
+        This interview's own copy of the resume. Edits affect the next answer only; the master resume is unchanged until you save back.
       </p>
       {msg && <div className="notice">{msg}</div>}
-      <textarea className="resume-text" rows={18} value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="form-actions">
-        <button onClick={async () => { await api.editInterviewResume(interview.id, text); setMsg("Saved for this interview."); }}>Save copy</button>
-        <button onClick={async () => { const r = await api.recopyResume(interview.id); setText(r.content); setMsg("Re-copied from Resume Management."); onReload(); }}>Re-copy from master</button>
-        <button onClick={async () => { await api.saveBackResume(interview.id); setMsg("Saved back to Resume Management."); }}>Save back to master</button>
+      <textarea className="resume-text" rows={14} value={text} onChange={(e) => setText(e.target.value)} />
+      <div className="form-actions" style={{ marginTop: 0 }}>
+        <button className="btn-sm primary" onClick={async () => { await api.editInterviewResume(interview.id, text); setMsg("Saved for this interview."); }}>Save copy</button>
+        <button className="btn-sm" onClick={async () => { const r = await api.recopyResume(interview.id); setText(r.content); setMsg("Re-copied from master."); onReload(); }}>Re-copy</button>
+        <button className="btn-sm" onClick={async () => { await api.saveBackResume(interview.id); setMsg("Saved back to master."); }}>Save back</button>
       </div>
     </div>
   );
@@ -274,18 +372,19 @@ function GenTab({ kind, interview, onReload }: { kind: "prep" | "summary"; inter
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const text = kind === "prep" ? interview.prep_pack : interview.summary;
+  const label = kind === "prep" ? "prep pack" : "summary";
   async function generate() {
     setBusy(true); setError(null);
     try { if (kind === "prep") await api.prepPack(interview.id); else await api.summary(interview.id); await onReload(); }
     catch (e: any) { setError(e.message); } finally { setBusy(false); }
   }
   return (
-    <div className="tab-body">
+    <div className="stack">
       {error && <div className="error-banner">{error}</div>}
-      <div className="form-actions">
-        <button disabled={busy} onClick={generate}>{busy ? "Generating…" : text ? `Regenerate ${kind}` : `Generate ${kind}`}</button>
+      <div className="form-actions" style={{ marginTop: 0 }}>
+        <button className="btn-sm primary" disabled={busy} onClick={generate}>{busy ? "Generating…" : text ? `Regenerate ${label}` : `Generate ${label}`}</button>
       </div>
-      {text ? <div className="markdown"><ReactMarkdown>{text}</ReactMarkdown></div> : <p className="muted">Not generated yet.</p>}
+      {text ? <div className="markdown"><ReactMarkdown>{text}</ReactMarkdown></div> : <p className="muted small">Not generated yet.</p>}
     </div>
   );
 }

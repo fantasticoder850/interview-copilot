@@ -2,7 +2,7 @@ import type { InterviewStatus } from "../types";
 
 const LABELS: Record<InterviewStatus, string> = {
   scheduled: "Scheduled",
-  interviewing: "Interviewing",
+  interviewing: "In session",
   ended: "Ended",
 };
 

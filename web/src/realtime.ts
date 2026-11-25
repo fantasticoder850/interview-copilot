@@ -34,6 +34,7 @@ export function connectRoom(
   interviewId: string,
   onEvent: (e: RoomEvent) => void,
   onReconnect: () => void,
+  onConnection?: (up: boolean) => void,
 ): () => void {
   let source: EventSource | null = null;
   let closed = false;
@@ -52,10 +53,12 @@ export function connectRoom(
       });
     }
     source.onopen = () => {
+      onConnection?.(true);
       if (!firstConnect) onReconnect();
       firstConnect = false;
     };
     source.onerror = () => {
+      onConnection?.(false);
       // EventSource retries on its own; close + reopen to force a clean refetch.
       source?.close();
       if (!closed) setTimeout(() => !closed && open(), 1500);

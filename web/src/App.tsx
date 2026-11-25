@@ -14,7 +14,7 @@ import { Account } from "./pages/Account";
 
 function Guard({ roles, children }: { roles?: Role[]; children: JSX.Element }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="page">Loading…</div>;
+  if (loading) return <div className="loading-page"><span className="spinner" /></div>;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/interviews" replace />;
   return children;
@@ -41,7 +41,7 @@ export function App() {
 
         <Route path="/account" element={<Guard><Account /></Guard>} />
 
-        <Route path="*" element={loading ? <div className="page">Loading…</div> : <Navigate to={user ? "/interviews" : "/login"} replace />} />
+        <Route path="*" element={loading ? <div className="loading-page"><span className="spinner" /></div> : <Navigate to={user ? "/interviews" : "/login"} replace />} />
       </Routes>
     </AppShell>
   );

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -18,8 +19,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <header className="topnav">
-        <button className="menu-btn" aria-label="Menu" onClick={() => setOpen((v) => !v)}>☰</button>
-        <span className="brand">Interview Assistant</span>
+        <button className="menu-btn" aria-label="Toggle menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          ☰
+        </button>
+        <Link to="/interviews" className="brand">
+          Interview&nbsp;<b>Copilot</b>
+        </Link>
         <nav className={`navlinks ${open ? "open" : ""}`} onClick={() => setOpen(false)}>
           {links.map((l) => (
             <Link key={l.to} to={l.to} className={loc.pathname.startsWith(l.to) ? "active" : ""}>
@@ -27,9 +32,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <span className="spacer" />
-        <Link to="/account" className="who">{user.name} · {user.role}</Link>
-        <button className="link-btn" onClick={() => logout()}>Sign out</button>
+        <div className="nav-right">
+          <ThemeToggle />
+          <Link to="/account" className="who" title="Account">
+            {user.name} · {user.role}
+          </Link>
+          <button className="link-btn" onClick={() => logout()}>Sign out</button>
+        </div>
       </header>
       <main className="content">{children}</main>
     </div>

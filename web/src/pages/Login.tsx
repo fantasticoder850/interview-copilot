@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function Login() {
   const { login } = useAuth();
@@ -26,14 +27,21 @@ export function Login() {
 
   return (
     <div className="auth-page">
-      <form className="auth-card" onSubmit={submit}>
-        <h1>Sign in</h1>
-        {error && <div className="error-banner">{error}</div>}
-        <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-        <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-        <button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button>
-        <p className="auth-alt">No account? <Link to="/register">Request access</Link></p>
-      </form>
+      <div className="auth-theme"><ThemeToggle /></div>
+      <div className="auth-card">
+        <div className="auth-brand">Interview <b>Copilot</b></div>
+        <div className="panel">
+          <h1>Sign in</h1>
+          <p className="auth-sub">Welcome back. Sign in to continue.</p>
+          <form onSubmit={submit}>
+            {error && <div className="error-banner">{error}</div>}
+            <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></label>
+            <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
+            <button className="primary" disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button>
+          </form>
+          <p className="auth-alt">No account? <Link to="/register">Request access</Link></p>
+        </div>
+      </div>
     </div>
   );
 }
