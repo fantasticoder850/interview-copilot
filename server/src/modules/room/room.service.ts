@@ -11,8 +11,7 @@ import {
 } from "../ai/ai.service.js";
 import {
   actionInstruction,
-  detailInstruction,
-  quickInstruction,
+  answerInstruction,
   systemBlocks,
 } from "../ai/prompt.js";
 import { buildHistory, interviewContext, loadInterview } from "../interviews/interview.context.js";
@@ -100,25 +99,15 @@ export async function generateAnswer({ interview, question, action, imageBlock, 
 
     const extra = action ? `\n\n${actionInstruction(action)}` : "";
 
-    // Stage 1: quick line (always fast model, thinking off).
-    const quickMessages: Anthropic.MessageParam[] = [
+    // Single answer on the interview's model. The cached system block carries
+    // the "answer as the candidate" behaviour; the per-turn instruction asks for
+    // the full spoken answer. Streamed to the client as `delta` events.
+    const answerMessages: Anthropic.MessageParam[] = [
       ...history,
-      { role: "user", content: [...questionBlocks, { type: "text", text: quickInstruction(interview.interview_type) + extra }] },
+      { role: "user", content: [...questionBlocks, { type: "text", text: answerInstruction(interview.interview_type) + extra }] },
     ];
-    const quick = await streamStage({
-      userId: interview.owner_id, model: QUICK_MODEL, system, messages: quickMessages, maxTokens: 200, thinkingOff: true,
-      signal: aborter.signal,
-      onDelta: (t) => { inflight!.quick += t; broadcast(interview.id, "quick_delta", { messageId, text: t }); },
-    });
-    broadcast(interview.id, "quick_done", { messageId, qaRef });
-
-    // Stage 2: detail (interview's model, low effort), continues the quick line.
-    const detailMessages: Anthropic.MessageParam[] = [
-      ...history,
-      { role: "user", content: [...questionBlocks, { type: "text", text: detailInstruction(interview.interview_type, quick.text) + extra }] },
-    ];
-    const detail = await streamStage({
-      userId: interview.owner_id, model: interview.model, system, messages: detailMessages, maxTokens: 2048,
+    const answer = await streamStage({
+      userId: interview.owner_id, model: interview.model, system, messages: answerMessages, maxTokens: 1024,
       effort: "low", cacheHistory: true, signal: aborter.signal,
       onDelta: (t) => { inflight!.content += t; broadcast(interview.id, "delta", { messageId, text: t }); },
     });
@@ -126,22 +115,21 @@ export async function generateAnswer({ interview, question, action, imageBlock, 
     await qaMatchPromise.catch(() => {});
     await query(
       `UPDATE interview_messages
-          SET quick=$2, content=$3, qa_ref=$4, state='complete', quick_ms=$5, detail_ms=$6,
-              input_tokens=$7, output_tokens=$8
+          SET content=$2, qa_ref=$3, state='complete', detail_ms=$4, input_tokens=$5, output_tokens=$6
         WHERE id=$1`,
-      [messageId, quick.text, detail.text, qaRef, quick.ms, detail.ms, detail.inputTokens, detail.outputTokens],
+      [messageId, answer.text, qaRef, answer.ms, answer.inputTokens, answer.outputTokens],
     );
-    broadcast(interview.id, "answer_done", { messageId, qaRef, quickMs: quick.ms, detailMs: detail.ms });
+    broadcast(interview.id, "answer_done", { messageId, qaRef, detailMs: answer.ms });
 
     // Likely follow-ups (after the answer; never delays it).
-    predictFollowUps(interview.owner_id, question, detail.text).then(async (fu) => {
+    predictFollowUps(interview.owner_id, question, answer.text).then(async (fu) => {
       if (fu.length === 0) return;
       await query(`UPDATE interview_messages SET follow_ups=$2 WHERE id=$1`, [messageId, JSON.stringify(fu)]);
       broadcast(interview.id, "follow_ups", { messageId, followUps: fu });
     }).catch(() => {});
 
     // History safety net.
-    if (detail.inputTokens > HISTORY_SUMMARY_THRESHOLD) {
+    if (answer.inputTokens > HISTORY_SUMMARY_THRESHOLD) {
       rollUpHistory(interview.id).catch((e) => console.error("rollup failed", e));
     }
   } catch (err) {

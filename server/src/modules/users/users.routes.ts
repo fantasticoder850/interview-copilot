@@ -24,6 +24,14 @@ adminRouter.patch(
   }),
 );
 
+adminRouter.delete(
+  "/users/:id",
+  asyncHandler(async (req, res) => {
+    await usersService.deleteUser(req.user!.id, req.params.id);
+    res.status(204).end();
+  }),
+);
+
 adminRouter.put(
   "/candidates/:id/managers",
   asyncHandler(async (req, res) => {

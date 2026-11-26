@@ -27,6 +27,14 @@ export interface Model {
   description: string;
 }
 
+export interface SystemPrompt {
+  id: string;
+  name: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface QA {
   id: string;
   question: string;

@@ -63,29 +63,23 @@ export function systemBlocks(args: {
   return [{ type: "text", text, cache_control: { type: "ephemeral", ttl: "1h" } }];
 }
 
-// Instruction appended for the fast "say now" line.
-export function quickInstruction(interviewType: string): string {
-  return (
-    `Give ONLY the opening 1-2 sentences the candidate can start saying out loud right now, in the first person. ` +
-    `No preamble, no lists. If a prepared answer matches, open with it. ` +
-    (interviewType === "technical"
-      ? `For a technical question, state the approach in one sentence.`
-      : `Keep it natural and conversational.`)
-  );
-}
-
-// Instruction appended for the detailed answer; continues the quick line.
-export function detailInstruction(interviewType: string, quickLine: string): string {
+// The single instruction for the candidate's answer. Appended to the question
+// turn; the "answer as the candidate" behaviour and grounding rules come from
+// the cached system block.
+export function answerInstruction(interviewType: string): string {
   const base =
-    `The candidate has already started saying: "${quickLine}"\n` +
-    `Continue seamlessly with the full answer in the first person. Do not repeat the opening verbatim and do not contradict it.`;
+    `Answer AS THE CANDIDATE, in the first person, ready to say out loud. ` +
+    `Lead with the direct answer, grounded in the resume and prepared answers — never invent facts. `;
   if (interviewType === "technical") {
     return (
       base +
-      `\nFor a coding or system-design question use this shape: a one-line approach, then the solution (code in a fenced block if code is needed), then time/space complexity, then edge cases to mention.`
+      `For a coding or system-design question: one-line approach, then the solution (code in a fenced block if needed), then time/space complexity, then edge cases.`
     );
   }
-  return base + `\nGive 2-4 supporting sentences or bullets, with a concrete example from the resume where it fits.`;
+  return (
+    base +
+    `Keep it concise and natural — a few spoken sentences (STAR for behavioural questions), with a concrete example from the resume where it fits.`
+  );
 }
 
 const ACTION_INSTRUCTIONS: Record<string, string> = {

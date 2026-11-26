@@ -8,6 +8,7 @@ import type {
   Person,
   Resume,
   ResumeSummary,
+  SystemPrompt,
 } from "./types";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -45,10 +46,19 @@ export const api = {
     req<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body: body(patch) }),
   setCandidateManagers: (candidateId: string, managerIds: string[]) =>
     req(`/admin/candidates/${candidateId}/managers`, { method: "PUT", body: body({ managerIds }) }),
+  deleteUser: (id: string) => req(`/admin/users/${id}`, { method: "DELETE" }),
 
   // people
   candidates: () => req<Person[]>("/candidates"),
   models: () => req<Model[]>("/models"),
+
+  // system prompts (personal library)
+  systemPrompts: () => req<SystemPrompt[]>("/system-prompts"),
+  createSystemPrompt: (data: { name: string; content: string }) =>
+    req<SystemPrompt>("/system-prompts", { method: "POST", body: body(data) }),
+  updateSystemPrompt: (id: string, data: Partial<{ name: string; content: string }>) =>
+    req<SystemPrompt>(`/system-prompts/${id}`, { method: "PATCH", body: body(data) }),
+  deleteSystemPrompt: (id: string) => req(`/system-prompts/${id}`, { method: "DELETE" }),
 
   // resumes
   resumes: () => req<ResumeSummary[]>("/resumes"),

@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { InterviewRow } from "../../common/types.js";
 import {
   actionInstruction,
-  detailInstruction,
-  quickInstruction,
+  answerInstruction,
   systemBlocks,
 } from "../../modules/ai/prompt.js";
 
@@ -71,18 +70,14 @@ describe("systemBlocks", () => {
 });
 
 describe("instructions", () => {
-  it("quick instruction differs by interview type", () => {
-    expect(quickInstruction("technical")).toContain("approach");
-    expect(quickInstruction("intro")).toContain("conversational");
+  it("answer instruction is first-person and resume-grounded", () => {
+    expect(answerInstruction("intro")).toMatch(/candidate/i);
+    expect(answerInstruction("intro")).toMatch(/resume/i);
   });
 
-  it("detail instruction continues the quick line", () => {
-    const d = detailInstruction("intro", "I led the migration");
-    expect(d).toContain("I led the migration");
-  });
-
-  it("technical detail asks for complexity and edge cases", () => {
-    expect(detailInstruction("technical", "x")).toMatch(/complexity/i);
+  it("answer instruction differs by interview type", () => {
+    expect(answerInstruction("technical")).toMatch(/complexity/i);
+    expect(answerInstruction("intro")).toMatch(/concise|STAR/i);
   });
 
   it("action instruction maps known actions and ignores unknown", () => {

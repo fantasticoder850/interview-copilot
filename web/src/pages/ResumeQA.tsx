@@ -12,6 +12,7 @@ interface Props {
 export function ResumeQA({ resumeId, qa, starterQuestions, onChange }: Props) {
   const [adding, setAdding] = useState({ question: "", answer: "" });
   const [busy, setBusy] = useState(false);
+  const [draftingIds, setDraftingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   const existing = new Set(qa.map((q) => q.question.toLowerCase()));
@@ -31,8 +32,10 @@ export function ResumeQA({ resumeId, qa, starterQuestions, onChange }: Props) {
     try { await api.deleteQA(resumeId, id); onChange(); } catch (e: any) { setError(e.message); }
   }
   async function draft(id: string, question: string) {
+    setDraftingIds((s) => new Set(s).add(id)); setError(null);
     try { const { answer } = await api.draftQA(resumeId, question); await update(id, { answer }); }
     catch (e: any) { setError(e.message); }
+    finally { setDraftingIds((s) => { const n = new Set(s); n.delete(id); return n; }); }
   }
 
   return (
@@ -61,14 +64,17 @@ export function ResumeQA({ resumeId, qa, starterQuestions, onChange }: Props) {
               onBlur={(e) => e.target.value !== item.question && update(item.id, { question: e.target.value })}
             />
             <textarea
+              key={`a:${item.id}:${item.answer}`}
               className="qa-a"
               placeholder="Answer…"
               defaultValue={item.answer}
               onBlur={(e) => e.target.value !== item.answer && update(item.id, { answer: e.target.value })}
             />
             <div className="qa-actions">
-              <button className="btn-sm" onClick={() => draft(item.id, item.question)}>Draft from resume</button>
-              <button className="btn-sm btn-danger" onClick={() => remove(item.id)}>Delete</button>
+              <button className="btn-sm" disabled={draftingIds.has(item.id)} onClick={() => draft(item.id, item.question)}>
+                {draftingIds.has(item.id) ? <><span className="spinner-inline" /> Drafting…</> : "Draft from resume"}
+              </button>
+              <button className="btn-sm btn-danger" disabled={draftingIds.has(item.id)} onClick={() => remove(item.id)}>Delete</button>
             </div>
           </div>
         ))}

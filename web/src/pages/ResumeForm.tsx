@@ -37,7 +37,14 @@ export function ResumeForm() {
       form.append("file", file);
       const { content: parsed } = await api.parseResume(form);
       setContent(parsed);
-      setNotice("Parsed into the standard structure. Review and save — the resume is stored as text; the PDF is not kept.");
+      // Auto-fill Name and Role from the parsed resume (the structured text
+      // always leads with NAME: and TARGET ROLE:). Only fill blank fields so a
+      // value the user already typed is never overwritten.
+      const parsedName = parsed.match(/^NAME:\s*(.+)$/im)?.[1]?.trim();
+      const parsedRole = parsed.match(/^TARGET ROLE:\s*(.+)$/im)?.[1]?.trim();
+      if (parsedName) setName((cur) => (cur.trim() ? cur : parsedName));
+      if (parsedRole) setRole((cur) => (cur.trim() ? cur : parsedRole));
+      setNotice("Parsed into the standard structure — Name and Role filled from the PDF where available. Review and save; the resume is stored as text and the PDF is not kept.");
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   }
 

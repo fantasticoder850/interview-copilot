@@ -71,6 +71,16 @@ export async function updateUser(
   return publicUser(rows[0]);
 }
 
+// Permanently delete a user. An admin cannot delete their own account. Related
+// rows (resumes, interviews, assignments) are removed by ON DELETE CASCADE.
+export async function deleteUser(actingAdminId: string, targetUserId: string) {
+  if (targetUserId === actingAdminId) {
+    throw new BadRequestError("You cannot delete your own account");
+  }
+  const { rowCount } = await query(`DELETE FROM users WHERE id = $1`, [targetUserId]);
+  if (rowCount === 0) throw new NotFoundError("User not found");
+}
+
 // Replace the full set of managers assigned to a candidate.
 export async function replaceManagers(candidateId: string, managerIds: string[]): Promise<string[]> {
   const { rows: vrows } = await query<{ role: string }>(

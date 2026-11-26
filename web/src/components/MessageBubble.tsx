@@ -24,7 +24,7 @@ export function MessageBubble({
 }: Props) {
   if (message.kind === "note") {
     return (
-      <div className="row-msg note">
+      <div className="row-msg note" data-mid={message.id}>
         <div className="note-bubble">
           <span className="note-tag">Note</span> {message.content}
         </div>
@@ -34,7 +34,7 @@ export function MessageBubble({
 
   if (message.role === "user") {
     return (
-      <div className="row-msg user">
+      <div className="row-msg user" data-mid={message.id}>
         <div className="bubble q">
           <div className="q-label">Question · {time(message.created_at)}</div>
           {message.image_id && (
@@ -49,7 +49,7 @@ export function MessageBubble({
   // assistant answer
   const showActions = !streaming && message.state === "complete";
   return (
-    <div className="row-msg assistant">
+    <div className="row-msg assistant" data-mid={message.id}>
       <div className="bubble a">
         {message.qa_ref != null && <span className="prepared-tag">Prepared answer</span>}
         {message.quick && <div className="opener">{message.quick}</div>}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../auth/AuthContext";
+import type { SystemPrompt } from "../types";
 
 export function Account() {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ export function Account() {
       <div className="account-grid">
         <ProfileForm />
         {user.role !== "candidate" && <ApiKeySection />}
+        {user.role !== "candidate" && <SystemPromptsSection />}
       </div>
     </div>
   );
@@ -141,6 +143,115 @@ function ApiKeySection() {
       )}
 
       <p className="hint">Credentials stay on the server. The full key is never shown in the browser.</p>
+    </div>
+  );
+}
+
+// Shown as the placeholder of the "new prompt" box and inserted by "Use sample".
+// It adds delivery rules on top of the built-in behaviour (answer as the
+// candidate, grounded in the resume and prepared answers).
+const SAMPLE_PROMPT_NAME = "Live interview — clear, accurate, fast";
+const SAMPLE_PROMPT = `Goal: answers I can say out loud immediately. Clear, accurate, quick to read.
+
+Delivery
+- Put the direct answer in the first sentence. No preamble, no restating the question.
+- Use short spoken sentences and plain words, the way I would say it aloud.
+- Keep a normal answer to 60-90 seconds spoken (about 120-180 words). Go longer only when the question asks for depth.
+- Make it easy to scan: at most 3-5 short bullets or 2 short paragraphs.
+
+Accuracy
+- Use only facts from my resume and prepared answers, with the exact names, dates and numbers written there.
+- If the resume does not cover something, do not guess. Say so briefly and bridge to my closest real experience.
+- Take one clear position. Do not hedge or list every option.
+
+By question type
+- Behavioural: STAR. One line each for Situation and Task, most of the answer on what I did ("I", not "we"), end on a measurable Result.
+- Technical: one-sentence approach first, then the key steps, then trade-offs, complexity and edge cases. Code only when asked.
+- Motivation or fit: 2-3 sentences linking my real experience to this role and company.
+- Unclear question: give one short clarifying question I can ask, then answer the most likely meaning.
+
+Stop when the answer is complete. No summary, no offer to elaborate.`;
+
+function SystemPromptsSection() {
+  const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.systemPrompts().then(setPrompts).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
+
+  async function add() {
+    if (!newName.trim()) return;
+    setBusy(true); setError(null);
+    try {
+      await api.createSystemPrompt({ name: newName.trim(), content: newContent });
+      setNewName(""); setNewContent(""); await load();
+    } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!confirm("Delete this system prompt?")) return;
+    try { await api.deleteSystemPrompt(id); await load(); } catch (e: any) { setError(e.message); }
+  }
+
+  return (
+    <div className="panel stack-form">
+      <div className="panel-head"><h2>System prompts</h2></div>
+      <p className="muted small">Reusable instructions you can apply — and still tweak — when creating an interview.</p>
+      {error && <div className="error-banner">{error}</div>}
+
+      <div className="qa-list">
+        {prompts.length === 0 && <p className="muted small">No saved prompts yet. Add one below.</p>}
+        {prompts.map((p) => (
+          <PromptCard key={p.id} prompt={p} onSaved={load} onError={setError} onRemove={() => remove(p.id)} />
+        ))}
+      </div>
+
+      <div className="prompt-add">
+        <input placeholder="Prompt name (e.g. Behavioural — concise STAR)" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <textarea rows={12} placeholder={`Sample:\n\n${SAMPLE_PROMPT}`} value={newContent} onChange={(e) => setNewContent(e.target.value)} />
+        <div className="row">
+          <button className="primary btn-sm" disabled={busy || !newName.trim()} onClick={add}>{busy ? "Adding…" : "Add prompt"}</button>
+          <button
+            type="button"
+            className="btn-sm"
+            disabled={busy}
+            onClick={() => { setNewContent(SAMPLE_PROMPT); setNewName((n) => n.trim() || SAMPLE_PROMPT_NAME); }}
+          >
+            Use sample
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PromptCard({ prompt, onSaved, onError, onRemove }: {
+  prompt: SystemPrompt;
+  onSaved: () => void;
+  onError: (m: string) => void;
+  onRemove: () => void;
+}) {
+  const [name, setName] = useState(prompt.name);
+  const [content, setContent] = useState(prompt.content);
+  const [busy, setBusy] = useState(false);
+  const dirty = name.trim() !== prompt.name || content !== prompt.content;
+
+  async function save() {
+    setBusy(true);
+    try { await api.updateSystemPrompt(prompt.id, { name: name.trim(), content }); onSaved(); }
+    catch (e: any) { onError(e.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="qa-item">
+      <input className="qa-q" value={name} onChange={(e) => setName(e.target.value)} />
+      <textarea className="qa-a" rows={3} value={content} onChange={(e) => setContent(e.target.value)} />
+      <div className="qa-actions">
+        <button className="btn-sm primary" disabled={busy || !dirty || !name.trim()} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+        <button className="btn-sm btn-danger" disabled={busy} onClick={onRemove}>Delete</button>
+      </div>
     </div>
   );
 }

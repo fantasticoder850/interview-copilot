@@ -6,9 +6,12 @@ import { MessageBubble } from "../components/MessageBubble";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAuth } from "../auth/AuthContext";
 import { connectRoom, type RoomEvent } from "../realtime";
-import type { Interview, Message } from "../types";
+import type { Interview, Message, QA } from "../types";
 
-type AsideTab = "resume" | "prep" | "summary";
+type AsideTab = "resume" | "prep" | "summary" | "questions";
+const ASIDE_TAB_LABELS: Record<AsideTab, string> = {
+  resume: "Resume", prep: "Prep pack", summary: "Summary", questions: "Questions",
+};
 
 export function InterviewRoom() {
   const { id } = useParams();
@@ -28,10 +31,16 @@ export function InterviewRoom() {
   const [noteText, setNoteText] = useState("");
   const [readOnly, setReadOnly] = useState(() => localStorage.getItem(`ro:${id}`) !== "false");
   const [readerScale, setReaderScale] = useState(1);
+  const [coachH, setCoachH] = useState(180);
+  const [spacerH, setSpacerH] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
+  const programmaticScrollRef = useRef(false);
   const lastQuestionRef = useRef<string>("");
+  const asideRef = useRef<HTMLElement>(null);
+  const pendingQRef = useRef<{ tempId: string; content: string }[]>([]);
+  const anchorAnswerRef = useRef<string | null>(null);
 
   const canManage = interview?.canManage ?? false;
   const isCandidate = user?.role === "candidate";
@@ -65,13 +74,25 @@ export function InterviewRoom() {
         break;
       case "presence": setPresence(e.count); break;
       case "status": setInterview((iv) => (iv ? { ...iv, status: e.status as any } : iv)); break;
-      case "question":
+      case "question": {
+        // If we optimistically added this question ourselves, swap the temp row
+        // for the real one instead of appending a duplicate.
+        if (e.authorId === user?.id) {
+          const idx = pendingQRef.current.findIndex((p) => p.content === e.content);
+          if (idx !== -1) {
+            const { tempId } = pendingQRef.current.splice(idx, 1)[0];
+            setMessages((prev) => prev.map((m) =>
+              m.id === tempId ? { ...m, id: e.id, image_id: e.imageId, action: e.action, created_at: e.created_at } : m));
+            break;
+          }
+        }
         setMessages((prev) => prev.some((m) => m.id === e.id) ? prev : [...prev, {
           id: e.id, role: "user", kind: "question", image_id: e.imageId, quick: null,
           content: e.content, qa_ref: null, follow_ups: null, author_id: e.authorId,
           action: e.action, model: null, state: "complete", created_at: e.created_at,
         }]);
         break;
+      }
       case "note":
         setMessages((prev) => prev.some((m) => m.id === e.id) ? prev : [...prev, {
           id: e.id, role: "user", kind: "note", image_id: null, quick: null, content: e.content,
@@ -81,6 +102,17 @@ export function InterviewRoom() {
         break;
       case "answer_start":
         setStreamingId(e.messageId);
+        // If we were following the latest, anchor the new answer's top under the
+        // header and stop auto-following, so it reads from the top instead of the
+        // view chasing its growing bottom. A trailing spacer gives the (last)
+        // answer room to actually reach the top.
+        if (pinnedRef.current) {
+          anchorAnswerRef.current = e.messageId;
+          setSpacerH(scrollRef.current?.clientHeight ?? 0);
+        } else {
+          anchorAnswerRef.current = null;
+        }
+        pinnedRef.current = false;
         setMessages((prev) => prev.some((m) => m.id === e.messageId) ? prev : [...prev, {
           id: e.messageId, role: "assistant", kind: "answer", image_id: null, quick: "", content: "",
           qa_ref: null, follow_ups: null, author_id: null, action: null, model: null,
@@ -105,30 +137,86 @@ export function InterviewRoom() {
     }
   }
 
-  // Auto-scroll unless the user has scrolled up.
+  // Auto-scroll to newest content ONLY while pinned to the bottom. The scroll we
+  // trigger ourselves is flagged so it isn't mistaken for the user scrolling; a
+  // scroll/wheel upward unpins and stays unpinned even while an answer streams,
+  // so the reader can hold their place.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+    if (el && pinnedRef.current) {
+      programmaticScrollRef.current = true;
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages]);
+  // Anchor a newly-started answer so its top sits just under the header and then
+  // holds still while it streams (set up in the answer_start handler). The
+  // trailing spacer added there is removed once the answer finishes.
+  useEffect(() => {
+    if (!streamingId) { setSpacerH(0); return; }
+    const target = anchorAnswerRef.current;
+    if (!target) return;
+    const scrollEl = scrollRef.current;
+    const el = scrollEl?.querySelector<HTMLElement>(`[data-mid="${target}"]`);
+    if (!scrollEl || !el) return;
+    anchorAnswerRef.current = null;
+    programmaticScrollRef.current = true;
+    const top = el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+    scrollEl.scrollTop = Math.max(0, top - 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamingId]);
+
+  const lastScrollTopRef = useRef(0);
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (programmaticScrollRef.current) { programmaticScrollRef.current = false; lastScrollTopRef.current = el.scrollTop; return; }
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (el.scrollTop < lastScrollTopRef.current - 2) pinnedRef.current = false; // user scrolled up
+    else if (atBottom) pinnedRef.current = true;
+    lastScrollTopRef.current = el.scrollTop;
   }
+  function onWheel(e: React.WheelEvent) { if (e.deltaY < 0) pinnedRef.current = false; }
   function followLatest() {
     const el = scrollRef.current;
-    if (el) { el.scrollTop = el.scrollHeight; pinnedRef.current = true; }
+    if (el) { programmaticScrollRef.current = true; el.scrollTop = el.scrollHeight; pinnedRef.current = true; }
+  }
+
+  // Show the question in the chat immediately, before the server round-trips.
+  function optimisticQuestion(content: string): string {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    pendingQRef.current.push({ tempId, content });
+    pinnedRef.current = true; // jump to the newly asked question
+    setMessages((prev) => [...prev, {
+      id: tempId, role: "user", kind: "question", image_id: null, quick: null,
+      content, qa_ref: null, follow_ups: null, author_id: user?.id ?? null,
+      action: null, model: null, state: "complete", created_at: new Date().toISOString(),
+    }]);
+    return tempId;
+  }
+  function rollbackOptimistic(tempId: string | null) {
+    if (!tempId) return;
+    pendingQRef.current = pendingQRef.current.filter((p) => p.tempId !== tempId);
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+
+  async function ask(content: string, imageFile?: File | null) {
+    if (!id) return;
+    const q = content.trim();
+    if (!q && !imageFile) return;
+    if (q) lastQuestionRef.current = q;
+    const form = new FormData();
+    form.append("content", q);
+    if (imageFile) form.append("image", imageFile);
+    const tempId = q ? optimisticQuestion(q) : null;
+    try { await api.ask(id, form); }
+    catch (e: any) { setError(e.message); rollbackOptimistic(tempId); }
   }
 
   async function send() {
-    if (!id || (!input.trim() && !image)) return;
-    const q = input.trim();
-    lastQuestionRef.current = q;
-    const form = new FormData();
-    form.append("content", q);
-    if (image) form.append("image", image);
+    if (!input.trim() && !image) return;
+    const q = input, img = image;
     setInput(""); setImage(null);
-    try { await api.ask(id, form); } catch (e: any) { setError(e.message); }
+    await ask(q, img);
   }
   async function shape(action: string) {
     if (!id) return;
@@ -143,11 +231,7 @@ export function InterviewRoom() {
     try { await api.note(id, note); } catch (e: any) { setError(e.message); }
   }
   async function followUp(q: string) {
-    if (!id) return;
-    const form = new FormData();
-    form.append("content", q);
-    lastQuestionRef.current = q;
-    try { await api.ask(id, form); } catch (e: any) { setError(e.message); }
+    await ask(q);
   }
   async function saveQA(msg: Message) {
     if (!id) return;
@@ -158,7 +242,13 @@ export function InterviewRoom() {
   }
   async function setStatus(status: string) {
     if (!id) return;
-    try { setInterview(await api.setStatus(id, status)); } catch (e: any) { setError(e.message); }
+    try {
+      // The status endpoint returns the raw interview row (no canManage /
+      // candidates), so merge it into the loaded view rather than replacing it —
+      // otherwise canManage is dropped and the composer + controls disappear.
+      const updated = await api.setStatus(id, status);
+      setInterview((iv) => (iv ? { ...iv, ...updated } : updated));
+    } catch (e: any) { setError(e.message); }
   }
   function toggleReadOnly() {
     setReadOnly((v) => { localStorage.setItem(`ro:${id}`, String(!v)); return !v; });
@@ -168,6 +258,25 @@ export function InterviewRoom() {
     const carry = confirm("Carry over the previous interview's summary as context?");
     try { const v2 = await api.newVersion(id, carry); nav(`/interviews/${v2.id}/edit`); }
     catch (e: any) { setError(e.message); }
+  }
+  // Drag the divider between the tab content and the Coach note to resize them.
+  function startCoachResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = coachH;
+    const onMove = (ev: MouseEvent) => {
+      const aside = asideRef.current;
+      const maxH = aside ? aside.clientHeight - 170 : 520;
+      setCoachH(Math.min(Math.max(startH + (startY - ev.clientY), 90), Math.max(120, maxH)));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+    };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }
 
   if (!interview) {
@@ -221,20 +330,14 @@ export function InterviewRoom() {
           <div className="room-title">
             {interview.job_title}{interview.company && <span className="muted"> · {interview.company}</span>}
           </div>
+          <StatusBadge status={interview.status} />
           <span className="spacer" />
           <span className={`connection ${connected ? "online" : "offline"}`}>{connected ? "Connected" : "Reconnecting…"}</span>
         </header>
         {error && <div style={{ padding: "0 var(--s5)" }}><div className="error-banner">{error}</div></div>}
 
-        <div className="reader-wrap" ref={scrollRef} onScroll={onScroll} style={{ ["--reader-scale" as any]: readerScale }}>
+        <div className="reader-wrap" ref={scrollRef} onScroll={onScroll} onWheel={onWheel} style={{ ["--reader-scale" as any]: readerScale }}>
           <div className="reader">
-            <div className="reader-status">
-              <StatusBadge status={interview.status} />
-              <label className="row small" style={{ gap: 6, color: "var(--muted)" }}>
-                <input type="checkbox" checked={readOnly} onChange={toggleReadOnly} style={{ width: "auto" }} /> Read-only
-              </label>
-            </div>
-
             {messages.length === 0 ? (
               <div className="reader-empty">
                 <p>{interview.status === "interviewing" ? "Waiting for the first answer…" : "The interview hasn't started yet."}</p>
@@ -242,13 +345,16 @@ export function InterviewRoom() {
             ) : (
               messages.map((m) => <ReaderMessage key={m.id} m={m} streaming={m.id === streamingId} />)
             )}
-
-            <div className="reader-controls">
-              <button className="btn-sm" aria-label="Decrease text size" onClick={() => setReaderScale((s) => Math.max(0.85, +(s - 0.1).toFixed(2)))}>A−</button>
-              <button className="btn-sm" aria-label="Increase text size" onClick={() => setReaderScale((s) => Math.min(1.5, +(s + 0.1).toFixed(2)))}>A+</button>
-              <button className="btn-sm btn-ghost" onClick={followLatest}>Follow latest</button>
-            </div>
+            <div aria-hidden style={{ height: spacerH }} />
           </div>
+        </div>
+
+        <div className="reader-controls">
+          <button className="btn-sm" aria-label="Decrease text size" onClick={() => setReaderScale((s) => Math.max(0.85, +(s - 0.1).toFixed(2)))}>A−</button>
+          <button className="btn-sm" aria-label="Increase text size" onClick={() => setReaderScale((s) => Math.min(1.5, +(s + 0.1).toFixed(2)))}>A+</button>
+          <span className="spacer" />
+          <button className={`btn-sm toggle-btn${readOnly ? " on" : ""}`} aria-pressed={readOnly} onClick={toggleReadOnly}>Read-only</button>
+          <button className="btn-sm btn-ghost" onClick={followLatest}>Follow latest</button>
         </div>
 
         {composer}
@@ -280,7 +386,7 @@ export function InterviewRoom() {
             {sessionControls}
           </div>
 
-          <div className="messages" ref={scrollRef} onScroll={onScroll}>
+          <div className="messages" ref={scrollRef} onScroll={onScroll} onWheel={onWheel}>
             {messages.length === 0 && (
               <div className="empty-state">
                 <span className="empty-icon" aria-hidden="true">💬</span>
@@ -297,27 +403,32 @@ export function InterviewRoom() {
                 onFollowUp={composerVisible ? followUp : undefined}
               />
             ))}
+            <div aria-hidden style={{ height: spacerH, flexShrink: 0 }} />
           </div>
 
           {composer}
         </section>
 
-        <aside className="room-aside">
+        <aside className="room-aside" ref={asideRef}>
           <div className="aside-tabs">
-            {(["resume", "prep", "summary"] as AsideTab[]).map((t) => (
+            {(["resume", "prep", "summary", "questions"] as AsideTab[]).map((t) => (
               <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-                {t === "resume" ? "Resume" : t === "prep" ? "Prep pack" : "Summary"}
+                {ASIDE_TAB_LABELS[t]}
               </button>
             ))}
           </div>
           <div className="aside-body">
-            {tab === "resume" && <ResumeTab interview={interview} onReload={refetch} />}
+            {tab === "resume" && <ResumeTab interview={interview} />}
             {tab === "prep" && <GenTab kind="prep" interview={interview} onReload={refetch} />}
             {tab === "summary" && <GenTab kind="summary" interview={interview} onReload={refetch} />}
+            {tab === "questions" && (
+              <QuestionsTab interview={interview} onAsk={composerVisible && interview.status === "interviewing" ? followUp : undefined} />
+            )}
           </div>
-          <div className="coach-note" style={{ borderTop: "1px solid var(--border)", padding: "var(--s4) var(--s5)" }}>
+          <div className="aside-resize" onMouseDown={startCoachResize} title="Drag to resize" role="separator" aria-orientation="horizontal" />
+          <div className="coach-note" style={{ height: coachH }}>
             <h3>Coach note</h3>
-            <textarea rows={2} value={noteText} placeholder="Write feedback to candidates…" onChange={(e) => setNoteText(e.target.value)} />
+            <textarea value={noteText} placeholder="Write feedback to candidates…" onChange={(e) => setNoteText(e.target.value)} />
             <button className="btn-sm" onClick={sendCoachNote} disabled={!noteText.trim()}>Save note</button>
           </div>
         </aside>
@@ -329,16 +440,16 @@ export function InterviewRoom() {
 function ReaderMessage({ m, streaming }: { m: Message; streaming: boolean }) {
   if (m.kind === "note") {
     return (
-      <div className="row-msg note" style={{ marginBottom: "var(--s5)" }}>
+      <div className="row-msg note" data-mid={m.id} style={{ marginBottom: "var(--s5)" }}>
         <div className="note-bubble"><span className="note-tag">Note</span> {m.content}</div>
       </div>
     );
   }
   if (m.role === "user") {
-    return <div className="q-label" style={{ margin: "var(--s5) 0 var(--s3)", fontSize: 14 }}>Interviewer asked: <strong style={{ color: "var(--text)" }}>{m.content}</strong></div>;
+    return <div className="q-label" data-mid={m.id} style={{ margin: "var(--s5) 0 var(--s3)", fontSize: 14 }}>Interviewer asked: <strong style={{ color: "var(--text)" }}>{m.content}</strong></div>;
   }
   return (
-    <article className="reader-card" style={{ marginBottom: "var(--s5)" }}>
+    <article className="reader-card" data-mid={m.id} style={{ marginBottom: "var(--s5)" }}>
       {m.qa_ref != null && <span className="prepared-tag">Prepared answer</span>}
       {m.quick && <div className="opener">{m.quick}</div>}
       {m.content && <div className="detail"><ReactMarkdown>{m.content}</ReactMarkdown></div>}
@@ -349,21 +460,54 @@ function ReaderMessage({ m, streaming }: { m: Message; streaming: boolean }) {
   );
 }
 
-function ResumeTab({ interview, onReload }: { interview: Interview; onReload: () => void }) {
-  const [text, setText] = useState(interview.resume_text ?? "");
-  const [msg, setMsg] = useState<string | null>(null);
+function ResumeTab({ interview }: { interview: Interview }) {
+  const text = (interview.resume_text ?? "").trim();
   return (
     <div className="stack">
       <p className="muted small">
-        This interview's own copy of the resume. Edits affect the next answer only; the master resume is unchanged until you save back.
+        The resume the answers are grounded in — read-only during the session. Edit it in the resume editor before you start.
       </p>
-      {msg && <div className="notice">{msg}</div>}
-      <textarea className="resume-text" rows={14} value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="form-actions" style={{ marginTop: 0 }}>
-        <button className="btn-sm primary" onClick={async () => { await api.editInterviewResume(interview.id, text); setMsg("Saved for this interview."); }}>Save copy</button>
-        <button className="btn-sm" onClick={async () => { const r = await api.recopyResume(interview.id); setText(r.content); setMsg("Re-copied from master."); onReload(); }}>Re-copy</button>
-        <button className="btn-sm" onClick={async () => { await api.saveBackResume(interview.id); setMsg("Saved back to master."); }}>Save back</button>
-      </div>
+      {text
+        ? <pre className="resume-readonly">{text}</pre>
+        : <p className="muted small">No resume copy for this interview yet.</p>}
+    </div>
+  );
+}
+
+function QuestionsTab({ interview, onAsk }: { interview: Interview; onAsk?: (q: string) => void }) {
+  const [qa, setQa] = useState<QA[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!interview.resume_id) { setQa([]); return; }
+    let on = true;
+    api.resume(interview.resume_id)
+      .then((r) => { if (on) setQa(r.qa); })
+      .catch((e) => { if (on) setError(e.message); });
+    return () => { on = false; };
+  }, [interview.resume_id]);
+
+  return (
+    <div className="stack">
+      <p className="muted small">
+        {onAsk ? "Click a question to ask it in the chat." : "Prepared questions from the linked resume. Start the session to ask them."}
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      {!interview.resume_id ? (
+        <p className="muted small">No resume linked to this interview.</p>
+      ) : qa === null ? (
+        <p className="muted small">Loading…</p>
+      ) : qa.length === 0 ? (
+        <p className="muted small">No prepared questions yet.</p>
+      ) : (
+        <div className="qa-ask-list">
+          {qa.map((q) => (
+            <button key={q.id} type="button" className="qa-ask-item" disabled={!onAsk} onClick={() => onAsk?.(q.question)}>
+              {q.question}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

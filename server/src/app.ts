@@ -8,6 +8,7 @@ import { authRouter } from "./modules/auth/auth.routes.js";
 import { interviewsRouter } from "./modules/interviews/interview.routes.js";
 import { resumesRouter } from "./modules/resumes/resumes.routes.js";
 import { roomRouter } from "./modules/room/room.routes.js";
+import { systemPromptsRouter } from "./modules/system-prompts/system-prompt.routes.js";
 import { adminRouter, peopleRouter } from "./modules/users/users.routes.js";
 
 // Builds and configures the Express app. Kept separate from the listen() call
@@ -29,6 +30,7 @@ export function createApp() {
   app.use("/api/admin", adminRouter);
   app.use("/api", peopleRouter);
   app.use("/api/resumes", resumesRouter);
+  app.use("/api/system-prompts", systemPromptsRouter);
   app.use("/api/interviews", interviewsRouter);
   app.use("/api/interviews", roomRouter);
 

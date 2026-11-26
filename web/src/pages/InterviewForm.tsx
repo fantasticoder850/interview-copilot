@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { MultiSelect } from "../components/MultiSelect";
 import { PageHeader } from "../components/PageHeader";
-import type { Model, Person, ResumeSummary } from "../types";
+import type { Model, Person, ResumeSummary, SystemPrompt } from "../types";
 
 const EMPTY = {
   jobTitle: "", jobDescription: "", systemPrompt: "", resumeId: "",
@@ -20,6 +20,7 @@ export function InterviewForm() {
   const [candidates, setCandidates] = useState<Person[]>([]);
   const [resumes, setResumes] = useState<ResumeSummary[]>([]);
   const [models, setModels] = useState<Model[]>([]);
+  const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -29,6 +30,7 @@ export function InterviewForm() {
     api.candidates().then(setCandidates).catch(() => {});
     api.resumes().then(setResumes).catch(() => {});
     api.models().then(setModels).catch(() => {});
+    api.systemPrompts().then(setPrompts).catch(() => {});
     if (!isNew) {
       api.interview(id!).then((i) => setForm({
         jobTitle: i.job_title, jobDescription: i.job_description ?? "", systemPrompt: i.system_prompt,
@@ -95,7 +97,22 @@ export function InterviewForm() {
           </label>
 
           <label>Company notes (product, values, interviewer backgrounds)<textarea rows={5} value={form.companyNotes} onChange={(e) => set("companyNotes", e.target.value)} /></label>
-          <label>System prompt<textarea rows={5} value={form.systemPrompt} onChange={(e) => set("systemPrompt", e.target.value)} placeholder="Extra instructions for how the assistant should answer" /></label>
+          <label>System prompt
+            {prompts.length > 0 && (
+              <select
+                className="prompt-picker"
+                value=""
+                onChange={(e) => {
+                  const p = prompts.find((x) => x.id === e.target.value);
+                  if (p) set("systemPrompt", p.content);
+                }}
+              >
+                <option value="">Use a saved prompt…</option>
+                {prompts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+            <textarea rows={5} value={form.systemPrompt} onChange={(e) => set("systemPrompt", e.target.value)} placeholder="Extra instructions for how the assistant should answer — or pick a saved prompt above and tweak it" />
+          </label>
         </div>
 
         <label style={{ marginTop: "var(--s4)" }}>Job description<textarea rows={5} value={form.jobDescription} onChange={(e) => set("jobDescription", e.target.value)} /></label>
